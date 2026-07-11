@@ -1,0 +1,27 @@
+version: 1
+
+# Omit repository to use the platform-local application data directory.
+# Use this to store encrypted data beside the configuration instead:
+# repository: ./repository
+
+plans:
+  documents:
+    name: Documents
+    enabled: true
+    sources:
+      documents:
+        path: ~/Documents
+      pictures:
+        path: ~/Pictures
+
+    schedule:
+      kind: daily
+      at: "02:30"
+      timezone: Local
+
+    retention:
+      keep_last: 14
+      keep_for: 90d
+
+# Destination providers will be added in a future release.
+destinations: {}
