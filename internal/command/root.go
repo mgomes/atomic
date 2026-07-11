@@ -54,6 +54,7 @@ func New(version string, stdout, stderr io.Writer) *cli.Command {
 		checkCommand(&configPath),
 		configCommand(&configPath),
 		runCommand(&configPath),
+		statusCommand(&configPath),
 		snapshotsCommand(&configPath),
 		verifyCommand(&configPath),
 		garbageCollectCommand(&configPath),

@@ -110,6 +110,72 @@ destinations: {}
 	}
 }
 
+func TestCLIStatusUsesExplicitStateDirectoryAndPlainOutput(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.yaml")
+	yaml := `version: 1
+repository: ./repository-does-not-exist
+plans:
+  documents:
+    name: Documents
+    enabled: true
+    sources:
+      files:
+        path: ./documents-does-not-exist
+`
+	if err := os.WriteFile(configPath, []byte(yaml), 0o600); err != nil {
+		t.Fatalf("WriteFile(config.yaml) returned error: %v", err)
+	}
+	stateDir := t.TempDir()
+	state := `{
+  "version": 2,
+  "plans": {
+    "documents": {
+      "runs": [
+        {
+          "scheduled_at": "2026-07-09T02:30:00Z",
+          "completed_at": "2026-07-09T02:35:00Z",
+          "outcome": "failed",
+          "error": "storage unavailable"
+        },
+        {
+          "scheduled_at": "2026-07-10T02:30:00Z"
+        },
+        {
+          "scheduled_at": "2026-07-11T02:30:00Z",
+          "completed_at": "2026-07-11T02:35:00Z",
+          "outcome": "succeeded",
+          "snapshot_id": "snapshot-1"
+        }
+      ]
+    }
+  }
+}`
+	if err := os.WriteFile(filepath.Join(stateDir, "daemon-state.json"), []byte(state), 0o600); err != nil {
+		t.Fatalf("WriteFile(daemon state) returned error: %v", err)
+	}
+
+	output, err := run(t, "--config", configPath, "status", "--state-dir", stateDir)
+	if err != nil {
+		t.Fatalf("ressik status returned error: %v\n%s", err, output)
+	}
+	for _, text := range []string{
+		"● Documents (documents)",
+		"×",
+		"·",
+		"● succeeded  × failed  · missing/unknown",
+	} {
+		if !strings.Contains(output, text) {
+			t.Errorf("ressik status output = %q, want %q", output, text)
+		}
+	}
+	if strings.Contains(output, "\x1b[") {
+		t.Errorf("ressik status redirected output contains ANSI escapes: %q", output)
+	}
+}
+
 func run(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	var output bytes.Buffer

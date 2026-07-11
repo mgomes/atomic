@@ -60,6 +60,7 @@ Then run, inspect, and restore snapshots:
 ```sh
 ./ressik run documents
 ./ressik run --full documents
+./ressik status
 ./ressik snapshots documents
 ./ressik verify
 ./ressik restore SNAPSHOT_ID --to ./restored
@@ -177,6 +178,13 @@ The same binary can install itself through the platform background manager:
 ./ressik service restart
 ./ressik service uninstall
 ```
+
+`ressik status` shows ten schedule slots per plan, from oldest to newest,
+without opening the encrypted repository or inspecting source paths. A green
+`●` succeeded, a red `×` failed, and a gray `·` has no durable result. Gray
+includes a missed occurrence, a backup interrupted before its result was
+recorded, and history from before this status format existed. Retries update
+their original schedule slot instead of adding another mark.
 
 Installation starts the job unless `--no-start` is supplied. Uninstalling
 never deletes configuration, repository keys, snapshots, or daemon state. The
