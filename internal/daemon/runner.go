@@ -175,6 +175,8 @@ func (r *Runner) step(ctx context.Context, loaded *config.Loaded, state *State, 
 		}
 
 		planState.PendingScheduled = due
+		planState.RetryAt = time.Time{}
+		planState.beginRun(due)
 		state.Plans[planID] = planState
 		if err := saveState(r.stateDir, *state); err != nil {
 			return err
@@ -184,23 +186,29 @@ func (r *Runner) step(ctx context.Context, loaded *config.Loaded, state *State, 
 		hasSnapshot := !snapshot.ID.IsZero()
 		if ctx.Err() != nil {
 			planState = state.Plans[planID]
+			completedAt := r.now()
+			planState.LastRun = completedAt
 			if hasSnapshot {
-				completedAt := r.now()
-				planState.LastRun = completedAt
-				planState.LastSnapshot = snapshot.ID.String()
+				snapshotID := snapshot.ID.String()
+				planState.LastSnapshot = snapshotID
 				planState.LastScheduled = completedAt
 				planState.PendingScheduled = time.Time{}
 				planState.RetryAt = time.Time{}
 				planState.ConsecutiveFailures = 0
 				if runErr != nil {
-					planState.LastError = runErr.Error()
+					errorMessage := runErr.Error()
+					planState.LastError = errorMessage
+					planState.completeRun(due, completedAt, RunFailed, snapshotID, errorMessage)
 				} else {
 					planState.LastError = ""
+					planState.completeRun(due, completedAt, RunSucceeded, snapshotID, "")
 				}
 				state.Plans[planID] = planState
 				return saveState(r.stateDir, *state)
 			}
-			planState.LastError = "backup interrupted: " + ctx.Err().Error()
+			errorMessage := "backup interrupted: " + ctx.Err().Error()
+			planState.LastError = errorMessage
+			planState.completeRun(due, completedAt, RunFailed, "", errorMessage)
 			state.Plans[planID] = planState
 			return saveState(r.stateDir, *state)
 		}
@@ -212,6 +220,10 @@ func (r *Runner) step(ctx context.Context, loaded *config.Loaded, state *State, 
 		}
 		if hasSnapshot {
 			planState.LastSnapshot = snapshot.ID.String()
+		}
+		outcome := RunSucceeded
+		if runErr != nil {
+			outcome = RunFailed
 		}
 		switch {
 		case runErr != nil && !hasSnapshot:
@@ -240,6 +252,15 @@ func (r *Runner) step(ctx context.Context, loaded *config.Loaded, state *State, 
 			planState.LastError = ""
 			r.log().InfoContext(ctx, "scheduled backup completed", "plan_id", planID, "snapshot_id", snapshot.ID.String())
 		}
+		snapshotID := ""
+		if hasSnapshot {
+			snapshotID = snapshot.ID.String()
+		}
+		errorMessage := ""
+		if runErr != nil {
+			errorMessage = runErr.Error()
+		}
+		planState.completeRun(due, completedAt, outcome, snapshotID, errorMessage)
 		state.Plans[planID] = planState
 		changed = true
 	}

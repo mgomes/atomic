@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -213,7 +214,7 @@ func TestRunQuarantinesUnreadableState(t *testing.T) {
 	}
 }
 
-func TestStepRunsLatestMissedOccurrenceOnce(t *testing.T) {
+func TestStepRunsOneMissedOccurrence(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
@@ -245,8 +246,19 @@ func TestStepRunsLatestMissedOccurrenceOnce(t *testing.T) {
 		t.Errorf("Runner.step() ran %d backups, want %d", got, want)
 	}
 	wantID := (object.ID{1}).String()
-	if got := state.Plans["documents"].LastSnapshot; got != wantID {
+	planState := state.Plans["documents"]
+	if got := planState.LastSnapshot; got != wantID {
 		t.Errorf("Runner.step() LastSnapshot = %q, want %q", got, wantID)
+	}
+	if got, want := len(planState.Runs), 1; got != want {
+		t.Fatalf("len(Runner.step() Runs) = %d, want %d", got, want)
+	}
+	if got, want := planState.Runs[0].Outcome, RunSucceeded; got != want {
+		t.Errorf("Runner.step() Runs[0].Outcome = %q, want %q", got, want)
+	}
+	wantScheduledAt := time.Date(2026, time.July, 9, 2, 30, 0, 0, time.UTC)
+	if got := planState.Runs[0].ScheduledAt; !got.Equal(wantScheduledAt) {
+		t.Errorf("Runner.step() Runs[0].ScheduledAt = %s, want %s", got, wantScheduledAt)
 	}
 }
 
@@ -277,6 +289,65 @@ func TestStepInitializesWithoutRunningImmediately(t *testing.T) {
 	}
 	if got := state.Plans["documents"].LastScheduled; !got.Equal(now) {
 		t.Errorf("Runner.step(initial) LastScheduled = %s, want %s", got, now)
+	}
+}
+
+func TestStepPersistsUnknownOutcomeBeforeBackupReturns(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	service := &fakeService{
+		loaded: &config.Loaded{Config: config.Config{Plans: map[string]config.Plan{
+			"documents": {
+				Enabled:  true,
+				Schedule: &config.Schedule{Kind: "daily", At: "02:30", Timezone: "UTC"},
+			},
+		}}},
+		run: func(context.Context, string) (repository.Summary, error) {
+			close(started)
+			<-release
+			return repository.Summary{ID: object.ID{1}}, nil
+		},
+	}
+	stateDir := t.TempDir()
+	runner, err := New(service, stateDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("New() returned error: %v", err)
+	}
+	state := newState()
+	state.Plans["documents"] = PlanState{LastScheduled: now.Add(-24 * time.Hour)}
+	done := make(chan error, 1)
+	var workers sync.WaitGroup
+	workers.Go(func() {
+		done <- runner.step(context.Background(), service.loaded, &state, now)
+	})
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+		workers.Wait()
+	}()
+	<-started
+
+	persisted, err := LoadState(stateDir)
+	if err != nil {
+		t.Fatalf("LoadState(in progress) returned error: %v", err)
+	}
+	runs := persisted.Plans["documents"].Runs
+	if got, want := len(runs), 1; got != want {
+		t.Fatalf("len(LoadState(in progress).Runs) = %d, want %d", got, want)
+	}
+	if run := runs[0]; run.Outcome != RunUnknown || !run.CompletedAt.IsZero() {
+		t.Errorf("LoadState(in progress).Runs[0] = %#v, want unknown outcome", run)
+	}
+
+	close(release)
+	released = true
+	if err := <-done; err != nil {
+		t.Fatalf("Runner.step() returned error: %v", err)
 	}
 }
 
@@ -323,6 +394,15 @@ func TestStepPreservesFailedOccurrenceForRetry(t *testing.T) {
 	if got, want := failed.RetryAt, completedAt.Add(time.Minute); !got.Equal(want) {
 		t.Errorf("Runner.step(first failure) RetryAt = %s, want %s", got, want)
 	}
+	if got, want := len(failed.Runs), 1; got != want {
+		t.Fatalf("len(Runner.step(first failure) Runs) = %d, want %d", got, want)
+	}
+	if got, want := failed.Runs[0].Outcome, RunFailed; got != want {
+		t.Errorf("Runner.step(first failure) Runs[0].Outcome = %q, want %q", got, want)
+	}
+	if got, want := failed.Runs[0].Error, runErr.Error(); got != want {
+		t.Errorf("Runner.step(first failure) Runs[0].Error = %q, want %q", got, want)
+	}
 	pending := failed.PendingScheduled
 
 	if err := runner.step(context.Background(), service.loaded, &state, completedAt.Add(30*time.Second)); err != nil {
@@ -347,6 +427,19 @@ func TestStepPreservesFailedOccurrenceForRetry(t *testing.T) {
 	}
 	if got, want := state.Plans["documents"].RetryAt, completedAt.Add(2*time.Minute); !got.Equal(want) {
 		t.Errorf("Runner.step(retry) RetryAt = %s, want %s", got, want)
+	}
+	retried := state.Plans["documents"].Runs
+	if got, want := len(retried), 1; got != want {
+		t.Fatalf("len(Runner.step(retry) Runs) = %d, want %d", got, want)
+	}
+	if got, want := retried[0].Outcome, RunFailed; got != want {
+		t.Errorf("Runner.step(retry) Runs[0].Outcome = %q, want %q", got, want)
+	}
+	if got, want := retried[0].CompletedAt, completedAt; !got.Equal(want) {
+		t.Errorf("Runner.step(retry) Runs[0].CompletedAt = %s, want %s", got, want)
+	}
+	if got, want := retried[0].Error, runErr.Error(); got != want {
+		t.Errorf("Runner.step(retry) Runs[0].Error = %q, want %q", got, want)
 	}
 	persisted, err := LoadState(runner.stateDir)
 	if err != nil {
@@ -392,6 +485,10 @@ func TestStepRecordsCommittedSnapshotAndMaintenanceError(t *testing.T) {
 	if !got.PendingScheduled.IsZero() {
 		t.Errorf("Runner.step() PendingScheduled = %s, want cleared committed occurrence", got.PendingScheduled)
 	}
+	if run := got.Runs[0]; run.Outcome != RunFailed ||
+		run.SnapshotID != snapshotID.String() || run.Error != "retention cleanup failed" {
+		t.Errorf("Runner.step() Runs[0] = %#v, want failed committed snapshot", run)
+	}
 }
 
 func TestStepConsumesCommittedOccurrenceWhenCanceledDuringMaintenance(t *testing.T) {
@@ -433,5 +530,51 @@ func TestStepConsumesCommittedOccurrenceWhenCanceledDuringMaintenance(t *testing
 	}
 	if !got.LastScheduled.Equal(completedAt) {
 		t.Errorf("Runner.step() LastScheduled = %s, want %s", got.LastScheduled, completedAt)
+	}
+	if run := got.Runs[0]; run.Outcome != RunFailed ||
+		run.SnapshotID != snapshotID.String() || run.Error != context.Canceled.Error() {
+		t.Errorf("Runner.step() Runs[0] = %#v, want canceled committed snapshot", run)
+	}
+}
+
+func TestStepRecordsInterruptedOccurrenceAsFailed(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.July, 10, 12, 0, 0, 0, time.UTC)
+	completedAt := now.Add(5 * time.Minute)
+	ctx, cancel := context.WithCancel(context.Background())
+	service := &fakeService{
+		loaded: &config.Loaded{Config: config.Config{Plans: map[string]config.Plan{
+			"documents": {
+				Enabled:  true,
+				Schedule: &config.Schedule{Kind: "daily", At: "02:30", Timezone: "UTC"},
+			},
+		}}},
+		run: func(context.Context, string) (repository.Summary, error) {
+			cancel()
+			return repository.Summary{}, context.Canceled
+		},
+	}
+	runner, err := New(service, t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("New() returned error: %v", err)
+	}
+	runner.now = func() time.Time { return completedAt }
+	state := newState()
+	state.Plans["documents"] = PlanState{LastScheduled: now.Add(-24 * time.Hour)}
+
+	if err := runner.step(ctx, service.loaded, &state, now); err != nil {
+		t.Fatalf("Runner.step() returned error: %v", err)
+	}
+	got := state.Plans["documents"]
+	if got.PendingScheduled.IsZero() {
+		t.Error("Runner.step() cleared interrupted occurrence, want pending retry")
+	}
+	if !got.LastRun.Equal(completedAt) {
+		t.Errorf("Runner.step() LastRun = %s, want %s", got.LastRun, completedAt)
+	}
+	if run := got.Runs[0]; run.Outcome != RunFailed ||
+		!run.CompletedAt.Equal(completedAt) || !strings.Contains(run.Error, "backup interrupted") {
+		t.Errorf("Runner.step() Runs[0] = %#v, want interrupted failure", run)
 	}
 }
