@@ -291,6 +291,15 @@ and crash-safety rules.
 ```sh
 just check
 just race
+just test-full
 just build
 just cross
 ```
+
+`just test-full` runs the complete suite with a slower, production-block-size
+lifecycle test enabled. It backs up and mutates a multi-generation corpus,
+checks deduplication, ignores, retention and garbage collection, restores
+complete historical trees, and proves that corrupted encrypted blocks cannot
+be verified or restored. The added test is excluded from pull-request CI and
+runs nightly on Linux, macOS, and Windows; the workflow can also be started
+manually.

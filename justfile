@@ -8,6 +8,9 @@ fmt:
 test:
     go test ./...
 
+test-full:
+    RESSIK_FULL_TESTS=1 go test -count=1 -timeout=20m ./...
+
 race:
     go test -race ./...
 
