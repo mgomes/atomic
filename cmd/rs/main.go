@@ -1,4 +1,4 @@
-// The ressik command creates and manages encrypted backups.
+// The rs command creates and manages encrypted backups.
 package main
 
 import (

@@ -12,15 +12,18 @@ repository format and recovery workflow have had broader testing.
 Build Ressik with Go 1.25 or newer:
 
 ```sh
-go build -o ressik ./cmd/ressik
+go build -o rs ./cmd/rs
 ```
+
+macOS also ships an unrelated `/usr/bin/rs` utility. Use `./rs` for a local
+build, or install Ressik somewhere earlier than `/usr/bin` in `PATH`.
 
 Create an empty configuration and a local encrypted repository:
 
 ```sh
-./ressik init
-$EDITOR "$(./ressik config path)"
-./ressik check
+./rs init
+$EDITOR "$(./rs config path)"
+./rs check
 ```
 
 Add a plan to the generated YAML:
@@ -53,11 +56,11 @@ destinations: {}
 Then run, inspect, and restore snapshots:
 
 ```sh
-./ressik run documents
-./ressik run --full documents
-./ressik snapshots documents
-./ressik verify
-./ressik restore SNAPSHOT_ID --to ./restored
+./rs run documents
+./rs run --full documents
+./rs snapshots documents
+./rs verify
+./rs restore SNAPSHOT_ID --to ./restored
 ```
 
 The restore destination must not already exist, and its parent directory must
@@ -69,20 +72,20 @@ directory, or link per configured source ID; for example, the `documents`
 source restores beneath `./restored/documents`.
 
 The daemon removes interrupted-write leftovers when it starts. CLI-only users
-can run `./ressik gc` after a hard crash to remove unreachable encrypted
+can run `./rs gc` after a hard crash to remove unreachable encrypted
 blocks, manifests, and temporary objects.
 
-`ressik verify` is the slower integrity path: it authenticates every encrypted
+`rs verify` is the slower integrity path: it authenticates every encrypted
 manifest and unique block and recomputes every Merkle root. Incremental backups
 only stat unchanged block objects so their normal path remains fast. A
-periodic `ressik run --full PLAN` rereads and hashes every source file as well,
+periodic `rs run --full PLAN` rereads and hashes every source file as well,
 covering filesystems whose change metadata is coarse or unavailable.
 
-Running `ressik` with no command opens the dashboard. The TUI also has an
+Running `rs` with no command opens the dashboard. The TUI also has an
 explicit command for scripts and launchers:
 
 ```sh
-./ressik tui
+./rs tui
 ```
 
 Use arrow keys or `j`/`k` to choose a plan, `r` to start it, `R` to reload,
@@ -104,13 +107,13 @@ directory, never the process working directory. Ressik expands only a leading
 `~`; it does not expand environment variables, shell expressions, or globs.
 Quote native Windows paths with single quotes when they contain backslashes.
 
-`ressik init` writes a random `configuration_id` that namespaces plan history
+`rs init` writes a random `configuration_id` that namespaces plan history
 and retention inside a repository. Keep that value when moving the config. A
 hand-written config may omit it; Ressik then derives a stable ID from the
 config's canonical path. This prevents two configs that share a repository and
 reuse a plan name from pruning one another's snapshots.
 
-`ressik init` writes the local repository to the platform application-data
+`rs init` writes the local repository to the platform application-data
 folder: `~/.local/share/ressik/repository` on Linux,
 `~/Library/Application Support/ressik/repository` on macOS, and
 `%LocalAppData%\ressik\repository` on Windows. This keeps large backup data out
@@ -118,7 +121,7 @@ of the Windows roaming profile. Omitting `repository` from a hand-written
 configuration uses this same platform default. An explicit value, including
 `./repository` for storage beside the config, overrides it.
 
-When `ressik init` is given an explicit `--config` path, it instead creates a
+When `rs init` is given an explicit `--config` path, it instead creates a
 repository beside that config and records the absolute path in YAML. This keeps
 multiple explicitly initialized configurations isolated from one another.
 
@@ -136,26 +139,26 @@ rejected.
 
 ## Background service
 
-`ressik daemon` runs the scheduler in the foreground. This is useful with a
+`rs daemon` runs the scheduler in the foreground. This is useful with a
 container, process supervisor, or a terminal while diagnosing schedules:
 
 ```sh
-./ressik daemon
+./rs daemon
 ```
 
 The same binary can install itself through the platform background manager:
 
 ```sh
-./ressik service install
-./ressik service status
-./ressik service restart
-./ressik service uninstall
+./rs service install
+./rs service status
+./rs service restart
+./rs service uninstall
 ```
 
 Installation starts the job unless `--no-start` is supplied. Uninstalling
 never deletes configuration, repository keys, snapshots, or daemon state. The
 installed job records absolute configuration and state paths. Keep the
-Ressik executable at the path from which it was installed.
+`rs` executable at the path from which it was installed.
 When installing with `--config` or `--state-dir`, repeat the same selectors on
 every later `service` command so it addresses the same job.
 
@@ -165,8 +168,8 @@ does not reset that backoff or silently consume the missed occurrence.
 
 On macOS, Ressik installs a per-user LaunchAgent. On systemd-based Linux it
 installs a user unit. Neither normally requires administrator access. Other
-Linux init systems can still supervise `ressik daemon` directly but are not
-handled by `ressik service` yet. A systemd user unit stops after logout unless
+Linux init systems can still supervise `rs daemon` directly but are not
+handled by `rs service` yet. A systemd user unit stops after logout unless
 lingering is enabled by the administrator:
 
 ```sh
@@ -231,6 +234,8 @@ and crash-safety rules.
 
 - Only the local encrypted repository is implemented. Cloud destinations are
   intentionally rejected by this build.
+- Restore currently materializes every source in a snapshot; there is no
+  individual-source or individual-path selector yet.
 - Chunking is fixed-size. Content-defined chunking can be introduced as a new
   format version later.
 - Backups are not filesystem-atomic. Ressik detects ordinary source mutations

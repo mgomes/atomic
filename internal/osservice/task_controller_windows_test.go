@@ -21,7 +21,7 @@ func TestNewTaskControllerNamespacesConfigAndRunsForegroundDaemon(t *testing.T) 
 
 	controller, err := newTaskController(Options{
 		Scope:      UserScope,
-		Executable: `C:\Program Files\Ressik\ressik.exe`,
+		Executable: `C:\Program Files\Ressik\rs.exe`,
 		ConfigPath: `C:\Users\me\AppData\Roaming\ressik\config.yaml`,
 		StateDir:   `C:\Users\me\AppData\Local\ressik\instances\abc`,
 	})
@@ -161,7 +161,7 @@ func TestTaskControllerInstallDoesNotOverwriteExistingTask(t *testing.T) {
 	task := &taskController{
 		name:       "ressik-test",
 		userSID:    "S-1-5-21-1-2-3-1001",
-		executable: `C:\ressik.exe`,
+		executable: `C:\rs.exe`,
 		arguments:  `daemon`,
 		stateDir:   t.TempDir(),
 		commandHook: func(_ context.Context, arguments ...string) error {

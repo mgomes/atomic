@@ -30,7 +30,7 @@ func TestServiceDefinitionUsesAbsoluteManagedArguments(t *testing.T) {
 
 	options := Options{
 		Scope:      UserScope,
-		Executable: "/opt/ressik/bin/ressik",
+		Executable: "/opt/ressik/bin/rs",
 		ConfigPath: "/home/user/.config/ressik/config.yaml",
 		StateDir:   "/home/user/.local/state/ressik",
 	}
@@ -64,7 +64,7 @@ func TestServiceDefinitionRejectsRelativePaths(t *testing.T) {
 
 	options := Options{
 		Scope:      DefaultScope(),
-		Executable: "ressik",
+		Executable: "rs",
 		ConfigPath: "/config.yaml",
 		StateDir:   "/state",
 	}
@@ -86,7 +86,7 @@ func TestServiceDefinitionRejectsSystemdSpecifierPaths(t *testing.T) {
 
 	options := Options{
 		Scope:      UserScope,
-		Executable: "/opt/ressik/bin/ressik",
+		Executable: "/opt/ressik/bin/rs",
 		ConfigPath: "/home/user/config-%i.yaml",
 		StateDir:   "/home/user/state",
 	}
@@ -100,13 +100,13 @@ func TestServiceDefinitionRejectsUnsupportedScope(t *testing.T) {
 
 	options := Options{
 		Scope:      SystemScope,
-		Executable: "/opt/ressik",
+		Executable: "/opt/rs",
 		ConfigPath: "/config.yaml",
 		StateDir:   "/state",
 	}
 	if runtime.GOOS == "windows" {
 		options.Scope = UserScope
-		options.Executable = `C:\ressik.exe`
+		options.Executable = `C:\rs.exe`
 		options.ConfigPath = `C:\config.yaml`
 		options.StateDir = `C:\state`
 	}

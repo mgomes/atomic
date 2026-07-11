@@ -10,7 +10,7 @@ func TestMarshalTaskUsesInteractiveLeastPrivilegeToken(t *testing.T) {
 
 	data, err := marshalTask(
 		"S-1-5-21-1-2-3-1001",
-		`C:\Program Files\Ressik & Co\ressik.exe`,
+		`C:\Program Files\Ressik & Co\rs.exe`,
 		`--config "C:\Users\me\config.yaml" daemon`,
 	)
 	if err != nil {
@@ -24,7 +24,7 @@ func TestMarshalTaskUsesInteractiveLeastPrivilegeToken(t *testing.T) {
 		"<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>",
 		"<Interval>PT5M</Interval>",
 		"<Count>255</Count>",
-		`C:\Program Files\Ressik &amp; Co\ressik.exe`,
+		`C:\Program Files\Ressik &amp; Co\rs.exe`,
 	} {
 		if !strings.Contains(definition, want) {
 			t.Errorf("task definition does not contain %q:\n%s", want, definition)

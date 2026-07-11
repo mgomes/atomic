@@ -28,7 +28,7 @@ import (
 func New(version string, stdout, stderr io.Writer) *cli.Command {
 	var configPath string
 	root := &cli.Command{
-		Name:      "ressik",
+		Name:      "rs",
 		Usage:     "encrypted, deduplicated backups",
 		Version:   version,
 		Writer:    stdout,
