@@ -110,7 +110,7 @@ func New(worker Worker, options Options) (*Manager, error) {
 		return &Manager{controller: controller}, nil
 	}
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		return nil, fmt.Errorf("background installation is unsupported on %s; run rs daemon under a supervisor", runtime.GOOS)
+		return nil, fmt.Errorf("background installation is unsupported on %s; run ressik daemon under a supervisor", runtime.GOOS)
 	}
 	definition, err := serviceDefinition(options)
 	if err != nil {
