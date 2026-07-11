@@ -66,6 +66,7 @@ func newFullCorpus(t *testing.T, root string) fullCorpus {
 	if err := os.MkdirAll(filepath.Join(root, "empty-dir"), 0o750); err != nil {
 		t.Fatalf("MkdirAll(empty-dir) returned error: %v", err)
 	}
+	setFullDirectoryTimes(t, root, modifiedAt)
 
 	return corpus
 }
@@ -99,6 +100,7 @@ func (c fullCorpus) mutate(t *testing.T) {
 	writeFullFile(t, filepath.Join(c.root, "new.bin"), []byte("new file\n"), modifiedAt)
 	writeFullFile(t, filepath.Join(c.root, "ignored.tmp"), []byte("changed but still ignored\n"), modifiedAt)
 	writeFullFile(t, filepath.Join(c.root, "cache", "opaque.bin"), c.blockA, modifiedAt)
+	setFullDirectoryTimes(t, c.root, modifiedAt)
 }
 
 func fullBlock(seed byte, size int) []byte {
@@ -132,6 +134,32 @@ func writeFullFile(t *testing.T, path string, data []byte, modifiedAt time.Time)
 	}
 	if err := os.Chtimes(path, modifiedAt, modifiedAt); err != nil {
 		t.Fatalf("Chtimes(%q) returned error: %v", path, err)
+	}
+}
+
+func setFullDirectoryTimes(t *testing.T, root string, modifiedAt time.Time) {
+	t.Helper()
+
+	var directories []string
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			directories = append(directories, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WalkDir(%q) returned error: %v", root, err)
+	}
+	sort.Slice(directories, func(i, j int) bool {
+		return len(directories[i]) > len(directories[j])
+	})
+	for _, directory := range directories {
+		if err := os.Chtimes(directory, modifiedAt, modifiedAt); err != nil {
+			t.Fatalf("Chtimes(%q) returned error: %v", directory, err)
+		}
 	}
 }
 
