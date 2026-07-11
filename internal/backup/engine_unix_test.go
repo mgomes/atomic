@@ -44,6 +44,41 @@ func TestBackupCollectsNewBlocksAfterPrecommitFailure(t *testing.T) {
 	}
 }
 
+func TestBackupIgnoresEntryBeforePortableNameValidation(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatalf("Mkdir(source) returned error: %v", err)
+	}
+	writeTestFile(t, filepath.Join(source, `not\portable`), "ignored")
+	repo, err := repository.Initialize(filepath.Join(root, "repository"))
+	if err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+	engine, err := backup.New(repo, "*")
+	if err != nil {
+		t.Fatalf("backup.New() returned error: %v", err)
+	}
+
+	summary, err := engine.Backup(context.Background(), "test", testPlan(source, 1))
+	if err != nil {
+		t.Fatalf("Backup() returned error: %v", err)
+	}
+	manifest, err := repo.Load(context.Background(), summary.ID)
+	if err != nil {
+		t.Fatalf("Load() returned error: %v", err)
+	}
+	entries := manifest.Sources[0].Entries
+	if got, want := len(entries), 1; got != want {
+		t.Fatalf("Backup() captured %d entries, want only the source root", got)
+	}
+	if got, want := entries[0].Path, "."; got != want {
+		t.Errorf("Backup() root path = %q, want %q", got, want)
+	}
+}
+
 func TestBackupPersistsAndRestoresSymlinkTargetKinds(t *testing.T) {
 	t.Parallel()
 

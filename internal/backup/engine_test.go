@@ -102,6 +102,66 @@ func TestBackupRestoreDedupAndRetention(t *testing.T) {
 	}
 }
 
+func TestBackupAppliesChangedIgnorePatterns(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.Mkdir(source, 0o700); err != nil {
+		t.Fatalf("Mkdir(source) returned error: %v", err)
+	}
+	writeTestFile(t, filepath.Join(source, "keep.txt"), "kept")
+	writeTestFile(t, filepath.Join(source, "skip.tmp"), "ignored sometimes")
+	repo, err := repository.Initialize(filepath.Join(root, "repository"))
+	if err != nil {
+		t.Fatalf("Initialize() returned error: %v", err)
+	}
+	unfiltered, err := backup.New(repo)
+	if err != nil {
+		t.Fatalf("backup.New(unfiltered) returned error: %v", err)
+	}
+	filtered, err := backup.New(repo, "*.tmp")
+	if err != nil {
+		t.Fatalf("backup.New(filtered) returned error: %v", err)
+	}
+	plan := testPlan(source, 0)
+
+	first, err := unfiltered.Backup(context.Background(), "test", plan)
+	if err != nil {
+		t.Fatalf("Backup(unfiltered first) returned error: %v", err)
+	}
+	if !manifestContainsPath(t, repo, first.ID, "skip.tmp") {
+		t.Error("Backup(unfiltered first) omitted skip.tmp")
+	}
+
+	second, err := filtered.Backup(context.Background(), "test", plan)
+	if err != nil {
+		t.Fatalf("Backup(filtered) returned error: %v", err)
+	}
+	if manifestContainsPath(t, repo, second.ID, "skip.tmp") {
+		t.Error("Backup(filtered) captured skip.tmp from prior snapshot metadata")
+	}
+	if second.Root == first.Root {
+		t.Errorf("Backup(filtered).Root = %s, want a root distinct from %s", second.Root, first.Root)
+	}
+	restore := filepath.Join(root, "restore-first")
+	if err := filtered.Restore(context.Background(), first.ID, backup.RestoreOptions{Destination: restore}); err != nil {
+		t.Fatalf("Restore(unfiltered snapshot with filtered engine) returned error: %v", err)
+	}
+	checkTestFile(t, filepath.Join(restore, "files", "skip.tmp"), "ignored sometimes")
+
+	third, err := unfiltered.Backup(context.Background(), "test", plan)
+	if err != nil {
+		t.Fatalf("Backup(unfiltered third) returned error: %v", err)
+	}
+	if !manifestContainsPath(t, repo, third.ID, "skip.tmp") {
+		t.Error("Backup(unfiltered third) did not recapture skip.tmp")
+	}
+	if third.Root != first.Root {
+		t.Errorf("Backup(unfiltered third).Root = %s, want original root %s", third.Root, first.Root)
+	}
+}
+
 func TestBackupReusesPriorFileWithoutOpeningBlock(t *testing.T) {
 	t.Parallel()
 
@@ -647,4 +707,25 @@ func checkTestFile(t *testing.T, path, want string) {
 	if got := string(data); got != want {
 		t.Errorf("ReadFile(%q) = %q, want %q", path, got, want)
 	}
+}
+
+func manifestContainsPath(
+	t *testing.T,
+	repo *repository.Repository,
+	id object.ID,
+	path string,
+) bool {
+	t.Helper()
+	manifest, err := repo.Load(context.Background(), id)
+	if err != nil {
+		t.Fatalf("Repository.Load(%s) returned error: %v", id, err)
+	}
+	for _, source := range manifest.Sources {
+		for _, entry := range source.Entries {
+			if entry.Path == path {
+				return true
+			}
+		}
+	}
+	return false
 }

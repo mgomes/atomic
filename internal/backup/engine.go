@@ -16,6 +16,7 @@ import (
 	"github.com/mgomes/ressik/internal/chunk"
 	"github.com/mgomes/ressik/internal/config"
 	"github.com/mgomes/ressik/internal/fsname"
+	"github.com/mgomes/ressik/internal/ignore"
 	"github.com/mgomes/ressik/internal/object"
 	"github.com/mgomes/ressik/internal/pathcheck"
 	"github.com/mgomes/ressik/internal/repository"
@@ -27,18 +28,24 @@ import (
 type Engine struct {
 	repository *repository.Repository
 	splitter   *chunk.Fixed
+	matcher    ignore.Matcher
 	now        func() time.Time
 }
 
 const standaloneConfigurationID = "00000000000000000000000000000000"
 
-// New returns a backup engine using the version-one chunk size.
-func New(repo *repository.Repository) (*Engine, error) {
+// New returns a backup engine using the version-one chunk size and optional
+// source-relative ignore patterns.
+func New(repo *repository.Repository, patterns ...string) (*Engine, error) {
 	splitter, err := chunk.NewFixed(chunk.DefaultSize)
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{repository: repo, splitter: splitter, now: time.Now}, nil
+	matcher, err := ignore.Compile(patterns)
+	if err != nil {
+		return nil, fmt.Errorf("compile ignore patterns: %w", err)
+	}
+	return &Engine{repository: repo, splitter: splitter, matcher: matcher, now: time.Now}, nil
 }
 
 // Backup captures one complete plan, commits it atomically, then applies its
@@ -364,6 +371,16 @@ func (e *Engine) scanDirectory(
 	leaves := make([]merkle.Digest, 0, len(children))
 	foldedNames := make(map[string]string, len(children))
 	for _, child := range children {
+		if err := ctx.Err(); err != nil {
+			return repository.Entry{}, nil, err
+		}
+		childRelative := child.Name()
+		if relative != "." {
+			childRelative = relative + "/" + child.Name()
+		}
+		if e.matcher.Match(childRelative) {
+			continue
+		}
 		if err := fsname.Component(child.Name()); err != nil {
 			return repository.Entry{}, nil, fmt.Errorf("filename %q is not portable: %w", child.Name(), err)
 		}
@@ -380,10 +397,6 @@ func (e *Engine) scanDirectory(
 		info, err := os.Lstat(childPath)
 		if err != nil {
 			return repository.Entry{}, nil, err
-		}
-		childRelative := child.Name()
-		if relative != "." {
-			childRelative = relative + "/" + child.Name()
 		}
 		root, childEntries, err := e.scanEntry(ctx, childPath, childRelative, info, previous, protected, stats)
 		if err != nil {

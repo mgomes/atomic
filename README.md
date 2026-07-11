@@ -28,6 +28,11 @@ Add a plan to the generated YAML:
 ```yaml
 version: 1
 
+ignore:
+  - ".DS_Store"
+  - "*.tmp"
+  - node_modules
+
 plans:
   documents:
     name: Documents
@@ -101,8 +106,29 @@ platform user configuration directory:
 
 Relative paths in YAML resolve from the symlink-resolved configuration file's
 directory, never the process working directory. Ressik expands only a leading
-`~`; it does not expand environment variables, shell expressions, or globs.
-Quote native Windows paths with single quotes when they contain backslashes.
+`~` in repository and source path fields; those fields do not expand
+environment variables, shell expressions, or globs. Quote native Windows paths
+with single quotes when they contain backslashes.
+
+The optional top-level `ignore` list applies to every plan and source; per-plan
+ignore lists are intentionally unsupported. Rules match portable
+source-relative paths and must use `/` separators on every platform. A rule
+without `/` matches a basename at any depth, so `*.tmp`, `.DS_Store`, and
+`node_modules` work throughout every source. A rule containing `/` matches the
+complete path from each source root: `build/*.map` is root-relative, while
+`build/**/*.map` also crosses nested directories beneath `build`. The supported
+operators are `*`, `?`, character classes such as `[0-9]`, and `**` as a whole
+path component. Matching is case-sensitive, Unicode-normalized, and includes
+dotfiles.
+
+When a directory matches, Ressik prunes it without reading its contents. The
+explicitly configured source root is always captured, even if its filename
+would match a rule. Ignore rules affect new snapshots only; changing them does
+not alter or limit restores of older snapshots. Negation, brace alternation,
+absolute patterns, traversal components, trailing slashes, and native Windows
+separators are rejected. Creating or removing an ignored direct child may
+still change its included parent directory's metadata; ignoring the containing
+directory avoids churn from its descendants.
 
 `ressik init` writes a random `configuration_id` that namespaces plan history
 and retention inside a repository. Keep that value when moving the config. A

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+
 	"github.com/mgomes/ressik/internal/config"
 )
 
@@ -77,6 +79,93 @@ plans:
 	}
 	if got, want := loaded.Config.Plans["photos"].Sources["archive"].Path, filepath.Join(physicalRoot, "Photos [Archive]"); got != want {
 		t.Errorf("Load().source path = %q, want %q", got, want)
+	}
+}
+
+func TestLoadPreservesGlobalIgnorePatterns(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	data := []byte(`version: 1
+repository: ./repository
+ignore:
+  - "*.tmp"
+  - cache
+  - "build/**/*.map"
+plans: {}
+`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile(config.yaml) returned error: %v", err)
+	}
+
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load(config.yaml) returned error: %v", err)
+	}
+	want := []string{"*.tmp", "cache", "build/**/*.map"}
+	if diff := cmp.Diff(want, loaded.Config.Ignore); diff != "" {
+		t.Errorf("Load().Config.Ignore mismatch (-want +got):\n%s", diff)
+	}
+}
+
+func TestLoadRejectsInvalidIgnorePatterns(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		pattern string
+	}{
+		{name: "empty"},
+		{name: "negation", pattern: "!keep.tmp"},
+		{name: "leading_slash", pattern: "/cache"},
+		{name: "native_separator", pattern: `cache\file`},
+		{name: "traversal", pattern: "cache/../file"},
+		{name: "brace_alternation", pattern: "*.{tmp,log}"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			cfg := config.New()
+			cfg.Repository = filepath.Join(filepath.Dir(path), "repository")
+			cfg.Ignore = []string{test.pattern}
+			if err := config.SaveNew(path, cfg); err != nil {
+				t.Fatalf("SaveNew(config with ignore %q) returned error: %v", test.pattern, err)
+			}
+
+			_, err := config.Load(path)
+			var validationErr *config.ValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("Load(config with ignore %q) error = %v, want *config.ValidationError", test.pattern, err)
+			}
+			if got, want := validationErr.Field, "ignore[0]"; got != want {
+				t.Errorf("Load(config with ignore %q) error field = %q, want %q", test.pattern, got, want)
+			}
+		})
+	}
+}
+
+func TestLoadRejectsPerPlanIgnorePatterns(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	data := []byte(`version: 1
+repository: ./repository
+plans:
+  home:
+    name: Home
+    enabled: true
+    ignore:
+      - "*.tmp"
+    sources:
+      files:
+        path: ./files
+`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile(config.yaml) returned error: %v", err)
+	}
+	if _, err := config.Load(path); err == nil {
+		t.Error("Load(config with per-plan ignore) error = nil, want unknown-field error")
 	}
 }
 

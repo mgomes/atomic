@@ -128,7 +128,7 @@ func (s *Service) run(ctx context.Context, planID string, full bool) (repository
 	if err := validateLivePaths(repo.Root(), map[string]config.Plan{planID: plan}); err != nil {
 		return repository.Summary{}, err
 	}
-	engine, err := backup.New(repo)
+	engine, err := backup.New(repo, loaded.Config.Ignore...)
 	if err != nil {
 		return repository.Summary{}, err
 	}

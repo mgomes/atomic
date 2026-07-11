@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mgomes/ressik/internal/fsname"
+	"github.com/mgomes/ressik/internal/ignore"
 )
 
 var validDays = map[string]bool{
@@ -42,6 +43,11 @@ func (l *Loaded) Validate() error {
 	}
 	if !filepath.IsAbs(l.Config.Repository) {
 		return invalid("repository", "must resolve to an absolute path")
+	}
+	for index, pattern := range l.Config.Ignore {
+		if err := ignore.Validate(pattern); err != nil {
+			return invalid(fmt.Sprintf("ignore[%d]", index), "%v", err)
+		}
 	}
 	if len(l.Config.Destinations) > 0 {
 		return invalid("destinations", "destination providers are not supported by this build")

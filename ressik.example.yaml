@@ -4,6 +4,13 @@ version: 1
 # Use this to store encrypted data beside the configuration instead:
 # repository: ./repository
 
+# Ignore rules apply to every source. Slashless rules match at any depth.
+ignore:
+  - ".DS_Store"
+  - "Thumbs.db"
+  - "*.tmp"
+  - node_modules
+
 plans:
   documents:
     name: Documents

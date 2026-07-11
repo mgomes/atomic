@@ -26,6 +26,7 @@ type Config struct {
 	Version         int                    `yaml:"version"`
 	ConfigurationID string                 `yaml:"configuration_id,omitempty"`
 	Repository      string                 `yaml:"repository,omitempty"`
+	Ignore          []string               `yaml:"ignore,omitempty"`
 	Destinations    map[string]Destination `yaml:"destinations,omitempty"`
 	Plans           map[string]Plan        `yaml:"plans"`
 }

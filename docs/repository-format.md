@@ -95,8 +95,9 @@ Absolute source paths exist only inside the encrypted manifest. A later scan
 may reuse a regular file's digest and block references when its relative path,
 kind, size, mode, modification time, filesystem identity, and change time still
 match and every referenced block object exists. Changed files are read again.
-This skips file-content reads, but Ressik still walks and stats the source tree.
-Full mode rereads and hashes every regular file.
+This skips file-content reads. Except for globally ignored paths, Ressik still
+walks and stats the source tree. Full mode rereads and hashes every included
+regular file.
 
 ## Manifests and restore safety
 

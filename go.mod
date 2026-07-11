@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	charm.land/bubbletea/v2 v2.0.8
 	charm.land/lipgloss/v2 v2.0.5
+	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/gofrs/flock v0.13.0
 	github.com/google/go-cmp v0.7.0
