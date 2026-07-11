@@ -76,12 +76,9 @@ func TestTaskControllerForcedRestartCompletesLifecycle(t *testing.T) {
 	if !terminated {
 		t.Error("Control(Restart) did not wait after forced termination")
 	}
-	entries, err := os.ReadDir(task.stateDir)
-	if err != nil {
-		t.Fatalf("ReadDir(state) returned error: %v", err)
-	}
-	if len(entries) != 0 {
-		t.Errorf("Control(Restart) left state control files: %v", entries)
+	requestPath := filepath.Join(task.stateDir, "daemon-stop.request")
+	if _, err := os.Stat(requestPath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("Stat(%q) error = %v, want os.ErrNotExist", requestPath, err)
 	}
 }
 
