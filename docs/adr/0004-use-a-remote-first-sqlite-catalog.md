@@ -101,6 +101,12 @@ physical pack locations. Ressik will create the immutable catalog through
 SQLite's snapshot or online backup facilities rather than copying a live
 database file and its journal.
 
+A catalog can be far larger than a version 1 manifest, and version 1 seals
+each object in one in-memory operation. Version 2 therefore defines a sealed
+framing for large objects that encrypts, authenticates, uploads, and reads
+them through bounded memory; the concrete framing belongs to the version 2
+format specification.
+
 For each destination, a snapshot becomes visible only after this sequence:
 
 1. Upload every new standalone block and pack required by the snapshot.
@@ -268,7 +274,8 @@ Compaction uses the same reserved staging or direct-upload path and defers when
 neither can complete safely.
 
 Catalog and rebuildable control metadata have a separate configured hard byte
-cap. The working database, WAL and shared-memory files, SQLite backup output,
+cap. Unlike the payload ceiling, this cap may be raised, because a larger
+source tree legitimately needs a larger active catalog. The working database, WAL and shared-memory files, SQLite backup output,
 encrypted catalog, atomic-write temporaries, delivery acknowledgements, and
 physical-location rows all reserve and count against that allowance. Rows that
 grow with repository history are evictable and remotely rebuildable. Ressik
