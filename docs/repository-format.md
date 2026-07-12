@@ -1,5 +1,14 @@
 # Repository format version 1
 
+Status: Unreleased draft
+
+This document describes the currently implemented local repository prototype.
+[ADR 0004](adr/0004-use-a-remote-first-sqlite-catalog.md) supersedes its remote
+object set, layout, schemas, and publication sequence before the first release
+with SQLite catalogs, immutable packs, and repository state generations. The
+detailed specification must be updated before release, and repositories created
+by development builds are not a compatibility boundary.
+
 ## Decision
 
 Ressik stores immutable, encrypted objects in a local content-addressed

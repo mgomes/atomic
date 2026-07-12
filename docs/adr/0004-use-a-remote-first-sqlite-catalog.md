@@ -6,11 +6,11 @@ Date: 2026-07-12
 
 ## Decision
 
-Ressik will make one configured destination authoritative for each version 2
-repository. Additional destinations will be one-way mirrors of that authority,
-not independent repositories. Mirrors copy the same repository-relative Ressik
-keys and bytes and never make their own retention, packing, compaction, or
-garbage collection decisions.
+Ressik will make one configured destination authoritative for each repository.
+Additional destinations will be one-way mirrors of that authority, not
+independent repositories. Mirrors copy the same repository-relative Ressik keys
+and bytes and never make their own retention, packing, compaction, or garbage
+collection decisions.
 
 Each snapshot will have an encrypted, immutable SQLite catalog containing its
 filesystem entries, ordered logical block references, Merkle roots, and summary
@@ -45,7 +45,7 @@ other rebuildable metadata will have a separate bounded allowance.
 
 ## Context
 
-The version 1 engine keeps a complete encrypted repository locally before a
+The current engine keeps a complete encrypted repository locally before a
 destination can copy it. An initial backup of N unique bytes therefore requires
 approximately N additional local bytes even when the intended durable copy is
 remote.
@@ -96,9 +96,9 @@ state is never merged with a returning authority, which must instead be replaced
 from the new one. Changes newer than the mirror's last complete generation may
 be lost.
 
-Version 2 assumes one mutating process at a time. A repository writer lock
-serializes backup, retention, compaction, migration, and mirror promotion on one
-machine. Ressik does not provide distributed locking or automatic fencing.
+Ressik assumes one mutating process at a time. A repository writer lock
+serializes backup, retention, compaction, and mirror promotion on one machine.
+Ressik does not provide distributed locking or automatic fencing.
 
 ## Snapshot publication and physical resolution
 
@@ -137,8 +137,8 @@ without exposing plaintext or changing their logical block IDs.
 
 ## Retention and compaction
 
-Retention keeps the version 1 policy semantics: `keep_last` and `keep_for` form
-a union, and the newest committed snapshot is always retained. A future storage
+Retention keeps the existing policy semantics: `keep_last` and `keep_for` form a
+union, and the newest committed snapshot is always retained. A future storage
 budget policy must define whether it overrides those protections before it
 ships. Either policy first selects retained snapshots; neither makes a reachable
 block directly deletable.
@@ -187,8 +187,8 @@ catalog at the authority or a complete mirror. It queries only the selected
 paths, resolves their logical block IDs through standalone objects and active
 pack indexes, and fetches only the required objects or byte ranges. It
 authenticates every catalog, index, and block and recomputes the existing Merkle
-roots before publishing restored files. Version 2 preserves version 1's path
-validation, traversal rejection, and atomic no-replace publication rules.
+roots before publishing restored files. The new catalog preserves the existing
+path validation, traversal rejection, and atomic no-replace publication rules.
 
 Losing local state does not lose repository authority. Ressik rebuilds its cache
 from the latest valid state generation, committed catalogs, and active pack
@@ -228,25 +228,26 @@ conservatively. The encrypted catalog must fit this allowance as a replayable
 single-object upload; otherwise backup fails without publishing a new state
 generation. Ressik reports payload and metadata usage separately.
 
-## Format transition
+## Repository format
 
-Version 2 uses a separate `ressik/v2/<repository-id>/...` namespace and distinct
-catalog, pack-index, repository-state, and commit schemas. Version 1 keeps its
-existing meaning and remains readable. Version 2 reuses version 1
-repository-scoped block IDs, key derivation, and sealed block frames so migration
-can copy authenticated frames without resealing them.
+No Ressik repository format has been released. This decision therefore extends
+the initial `ressik/v1/<repository-id>/...` layout from ADR 0003 instead of
+creating a parallel namespace or migration path. The first supported format will
+include the catalog, pack-index, repository-state, and commit schemas described
+here while retaining the existing repository-scoped block IDs, key derivation,
+and sealed block frames.
 
-Migration is copy-and-verify, not an in-place rewrite. Ressik leaves version 1
-snapshots intact until the selected version 2 snapshots are committed and
-verified and the user explicitly removes the old copy.
+Development repositories created before the first release are not a
+compatibility boundary and may need to be recreated. The repository-format
+specification must be updated to incorporate this decision before the format is
+released.
 
-This decision extends ADR 0003 with a version 2 publication layout. It amends ADR
-0002 to require byte-range `GetObject` for efficient pack reads and, for
-versioned providers, paginated object-version listing and version-specific
-deletion. Roughly 4 MiB packs and metadata-capped catalogs use ordinary
-`PutObject`; multipart upload remains a separate decision. An adapter must prove
-that deletion reclaims provider versions before storage-budget enforcement may
-count those bytes as reclaimed.
+This decision also amends ADR 0002 to require byte-range `GetObject` for
+efficient pack reads and, for versioned providers, paginated object-version
+listing and version-specific deletion. Roughly 4 MiB packs and metadata-capped
+catalogs use ordinary `PutObject`; multipart upload remains a separate decision.
+An adapter must prove that deletion reclaims provider versions before
+storage-budget enforcement may count those bytes as reclaimed.
 
 ## Consequences
 
@@ -256,12 +257,13 @@ remote operations for small files, while logical-to-physical indirection permits
 compaction without rewriting snapshot catalogs. A mirror copies one physical
 layout instead of maintaining an independently reconciled repository.
 
-The implementation now owes a portable SQLite integration, a version 2 format
-specification, authenticated repository-state generations and pack indexes,
-byte-range reads, ordered mirror synchronization, copy-on-write compaction, and
-failure-injection tests around every publication boundary. Rebuilding a lost
-cache may require opening many catalogs and indexes. Publishing each snapshot
-uploads a complete SQLite catalog even when most metadata is unchanged.
+The implementation now owes a portable SQLite integration, an updated repository
+format specification, authenticated repository-state generations and pack
+indexes, byte-range reads, ordered mirror synchronization, copy-on-write
+compaction, and failure-injection tests around every publication boundary.
+Rebuilding a lost cache may require opening many catalogs and indexes. Publishing
+each snapshot uploads a complete SQLite catalog even when most metadata is
+unchanged.
 
 The authority is an availability dependency. Automatic failover is unavailable,
 and an asynchronous mirror can lose the authority's newest state. Compaction
