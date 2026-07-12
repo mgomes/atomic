@@ -74,28 +74,45 @@ crashes, interrupted replication, cache repair, or partial destination failure.
 This decision supersedes ADR 0003's remote publication sequence and key layout
 for new remote-first snapshots. Those snapshots use a separate
 `ressik/v2/<repository-id>/...` destination namespace, distinct catalog,
-pack-index, replication-waiver, retention-removal, control-checkpoint, and
-commit schemas, and distinct authenticated object kinds. Version 1 keeps its
-existing meaning and remains readable; a reader must never infer an object's
-schema from current configuration or reinterpret a version 1 manifest as a
-version 2 catalog.
+pack-index, destination-record, replication-waiver, retention-removal,
+control-checkpoint, and commit schemas, and distinct authenticated object
+kinds. Version 1 keeps its existing meaning and remains readable; a reader must
+never infer an object's schema from current configuration or reinterpret a
+version 1 manifest as a version 2 catalog.
+
+Version 2 deliberately reuses version 1 logical block IDs, block-key
+derivation, and sealed block frames. A version 2 standalone block contains one
+complete version 1 block frame, and a pack contains those frames verbatim. New
+authenticated kinds apply only to version 2 catalogs, indexes, destination and
+control records, and commits. Readers select the block decoder from the
+authenticated frame version rather than the destination key. Changing block
+framing or key derivation requires a later format version.
 
 Migration is copy-and-verify, not an in-place rewrite. Ressik authenticates a
 version 1 snapshot, writes its version 2 objects under the separate namespace,
 and publishes the version 2 commit last. It leaves the version 1 snapshot intact
 until every selected snapshot is committed and verified in version 2 and the
-user explicitly removes the old copy. Existing sealed block frames may be
-copied into version 2 standalone objects or packs when their version 1 semantics
-remain unchanged.
+user explicitly removes the old copy. Migration copies authenticated version 1
+block frames without resealing or changing their IDs.
 
 This decision also amends ADR 0002's deliberately small client surface.
-Version 2 restore requires ranged GetObject reads so single pack members can
-be fetched without downloading whole packs. Objects that exceed local
-staging or a provider's single-request size limit are sent with multipart
-uploads, which keep memory bounded while every part still signs its own
-SHA-256 payload; SigV4 streaming payloads and presigned URLs remain
-excluded. Recovery-scale listing composes the existing single-page
-ListObjectsV2 operation and needs no new client surface.
+Version 2 adds ranged and version-specific GetObject; CreateMultipartUpload,
+UploadPart, CompleteMultipartUpload, AbortMultipartUpload, and one page of
+ListMultipartUploads; and one page of ListObjectVersions plus version-specific
+DeleteObject. A read-only GetBucketLifecycleConfiguration operation supports
+provider qualification. PutObject and CompleteMultipartUpload return the
+provider version ID when one exists. Pagination remains above the client.
+
+Multipart uploads use replayable bounded parts and sign each part's SHA-256
+payload. A failed upload is aborted before returning. On startup, while holding
+the repository writer lock, Ressik lists and aborts every incomplete multipart
+upload beneath its repository prefix before publishing new objects. It restarts
+an interrupted object rather than resuming parts, so ListParts is unnecessary.
+For a provider with strong multipart listing, lifecycle cleanup is defense in
+depth. A discovery-only provider must expose a verified lifecycle rule that
+aborts incomplete uploads beneath the repository prefix; without it, the
+adapter is restore-only. SigV4 streaming payloads, presigned URLs, bucket
+mutation, ACLs, tagging, and a general AWS credential chain remain excluded.
 
 ## Snapshot publication
 
@@ -195,10 +212,27 @@ exactly once and never resealed, and every destination receives byte-identical
 catalog ciphertext, re-fetched from a complete destination when local staging
 is gone. Physical locations are rebuilt and checked separately for each
 destination; the presence of an authenticated commit alone does not prove that
-destination is complete. Recovery and garbage collection treat listings as
-complete, so version 2 destinations must provide strongly consistent
-read-after-write and list-after-write visibility; an eventually consistent
-destination is unsupported.
+destination is complete.
+
+Each adapter declares whether its provider contract guarantees strongly
+consistent read-after-write and list-after-write visibility. Strong listings
+may establish absence during recovery and garbage collection. Without that
+guarantee, listings are discovery only: Ressik may upload, replicate, restore
+discovered snapshots, and permanently delete already-known versions, but it
+never performs absence-based destructive garbage collection. Uncertain objects
+remain stored. The provider check reports this limitation before enabling the
+destination. AWS S3 and Cloudflare R2 use their documented strong consistency;
+Backblaze B2 remains conservative unless its adapter can establish the same
+guarantee. Immutable keys and version-specific deletion avoid B2's documented
+same-key ordering limitation.
+
+A discovery-only destination cannot be the sole recovered control authority
+after local state loss because an omitted newer checkpoint is indistinguishable
+from absence. It remains restore-only until the explicit authenticated
+authority-recovery operation selects a head and starts a new epoch. Re-enabling
+the destination abandons its prior epoch; every old-epoch record revealed later
+is rejected even when a strongly consistent destination supplied the selected
+head.
 
 A recovered destination becomes the only replication source, or authorizes
 deletion of another copy, only after every reachable logical block resolves on
@@ -237,6 +271,27 @@ correctness.
 Destinations may compact independently because snapshot catalogs contain no
 pack IDs. A lagging destination may therefore use a different physical pack
 layout for the same logical snapshot.
+
+Published destination keys are immutable. Ressik verifies and reuses an
+existing object instead of intentionally overwriting it; an ambiguous retry may
+still create another byte-identical provider version. Every successful write
+records its optional provider version ID in rebuildable physical-location
+state.
+
+A key-only DeleteObject is a visibility operation and is never evidence that
+storage was reclaimed. On a strongly consistent destination, garbage collection
+lists every version and delete marker for a retired key and permanently deletes
+each by version ID. On an unversioned destination, where no version ID exists,
+key-only deletion is sufficient.
+
+A discovery-only versioned provider must expose a verified lifecycle rule that
+permanently expires noncurrent versions and orphan delete markers beneath the
+repository prefix. For every retired key, Ressik first sends a key-only delete
+to create a visibility marker and make the current data version noncurrent. It
+then deletes every discovered version immediately, while the lifecycle rule
+bounds cleanup of versions omitted from listings and removes the orphan marker.
+Without that rule, the adapter is restore-only. This requirement applies to
+Backblaze B2, whose buckets are always versioned.
 
 ## Concurrency
 
@@ -468,3 +523,10 @@ to remain readable or to be drained through the compactor.
 - [Repository format version 1](../repository-format.md)
 - [SQLite Online Backup API](https://www.sqlite.org/backup.html)
 - [Arq 7 data format](https://www.arqbackup.com/documentation/arq7/English.lproj/dataFormat.html)
+- [AWS deletion of versioned objects](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)
+- [AWS incomplete multipart cleanup](https://docs.aws.amazon.com/AmazonS3/latest/userguide/abort-mpu.html)
+- [Amazon S3 consistency model](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel)
+- [Cloudflare R2 consistency model](https://developers.cloudflare.com/r2/reference/consistency/)
+- [Backblaze B2 bucket versions](https://www.backblaze.com/docs/cloud-storage-s3-compatible-api-bucket-versions)
+- [Backblaze B2 S3-compatible API](https://www.backblaze.com/docs/en/cloud-storage-call-the-s3-compatible-api)
+- [Backblaze B2 lifecycle configuration](https://www.backblaze.com/apidocs/s3-get-lifecycle-configuration)
