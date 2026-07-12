@@ -125,9 +125,13 @@ physical blocks remain pinned on at least one physically complete destination.
 Removing a required destination is an explicit authenticated repository
 operation. It publishes a replication-waiver record naming the snapshot and
 destination to every remaining complete destination before clearing that pin.
-Editing configuration or losing credentials never implies a waiver. Recovery
-applies only authenticated waiver records, so an unavailable destination pins
-data until it either catches up or the user deliberately abandons delivery.
+Editing configuration or losing credentials never implies a waiver, and
+Ressik refuses to remove a destination while it is the last physically
+complete source for any snapshot with outstanding replication obligations;
+abandoning the data itself is a separate, explicitly destructive snapshot
+deletion rather than a waiver. Recovery applies only authenticated waiver
+records, so an unavailable destination pins data until it either catches up
+or the user deliberately abandons delivery.
 
 If local cache and delivery state are lost, Ressik lists snapshot commits and
 pack indexes at the configured destinations and authenticates their catalogs.
