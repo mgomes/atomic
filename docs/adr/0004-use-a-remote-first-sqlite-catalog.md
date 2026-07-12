@@ -134,7 +134,10 @@ pack indexes at the configured destinations and authenticates their catalogs.
 The union of valid commits is reconstructed conservatively. The same snapshot
 ID with different catalog digests is corruption. Physical locations are rebuilt
 and checked separately for each destination; the presence of an authenticated
-commit alone does not prove that destination is complete.
+commit alone does not prove that destination is complete. Recovery and
+garbage collection treat listings as complete, so version 2 destinations
+must provide strongly consistent read-after-write and list-after-write
+visibility; an eventually consistent destination is unsupported.
 
 A recovered destination becomes the only replication source, or authorizes
 deletion of another copy, only after every reachable logical block resolves on
