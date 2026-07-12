@@ -1,9 +1,14 @@
 # ADR 0003: Define a repository transfer protocol
 
-Status: Accepted, extended by
+Status: Accepted, partially superseded by
 [ADR 0004](0004-use-a-remote-first-sqlite-catalog.md)
 
 Date: 2026-07-11
+
+ADR 0004 supersedes this record's prototype remote object set, layout, and
+commit-last publication boundary before release. The repository ID derivation,
+provider-independent naming, exact-ciphertext transfer, and prohibition on
+exposing local paths or `repository.key` remain in force.
 
 ## Decision
 
