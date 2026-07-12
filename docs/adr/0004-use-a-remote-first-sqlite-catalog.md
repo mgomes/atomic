@@ -119,9 +119,12 @@ mutation, ACLs, tagging, and a general AWS credential chain remain excluded.
 
 The backed-up SQLite catalog contains one snapshot's logical state. It excludes
 credentials, retry timers, daemon status, destination acknowledgements, and
-physical pack locations. Ressik will create the immutable catalog through
-SQLite's snapshot or online backup facilities rather than copying a live
-database file and its journal.
+physical pack locations. Ressik will materialize the immutable catalog as a
+standalone database through SQLite's Online Backup API rather than copying a
+live database file and its journal. A build that enables SQLite's snapshot API
+may use a snapshot handle to select the source read view, but that optional
+handle does not replace the portable backup operation or become part of the
+repository format.
 
 A catalog can be far larger than a version 1 manifest, and version 1 seals
 each object in one in-memory operation. Version 2 therefore defines a sealed
@@ -140,12 +143,22 @@ The commit records the snapshot ID, catalog digest, and stable IDs of the
 destinations required when the snapshot was captured, and it keeps the
 version 1 commit's summary role: plan identity, display name, creation time,
 Merkle root, and the statistics needed to list snapshots without downloading
-catalogs. A destination's stable ID is a random value minted when the
-destination is attached and recorded at the destination as well as in
-configuration, so recovery on a new machine re-matches configured
-destinations to recorded obligations, and waivers accept historical IDs that
-no longer appear in configuration. A snapshot may be complete on one
-destination while another is pending.
+catalogs.
+
+Attaching a destination mints a random 128-bit destination ID. Ressik seals a
+destination record under its dedicated version 2 authenticated kind containing
+the repository ID, destination ID, and record version, then stores it beneath
+that destination's repository prefix. Configuration stores the same ID, but a
+remote copy is trusted only after the record authenticates with `repository.key`.
+
+Recovery authenticates destination records at each configured location. It
+accepts exactly one effective record or requires the user to select an ID
+explicitly. Copying a destination also copies its identity and therefore does
+not create another replica; attaching that copy as an independent obligation
+requires minting and publishing a new destination record. Credentials and
+display names are not part of destination identity, and waivers accept
+historical IDs no longer present in configuration. A snapshot may be complete
+on one destination while another is pending.
 
 Ressik releases an individual staged object as soon as one destination durably
 acknowledges the exact uploaded bytes. This object-level decision does not make
@@ -546,6 +559,7 @@ to remain readable or to be drained through the compactor.
 - [ADR 0003: Define a repository transfer protocol](0003-define-repository-transfer-protocol.md)
 - [Repository format version 1](../repository-format.md)
 - [SQLite Online Backup API](https://www.sqlite.org/backup.html)
+- [SQLite snapshot API](https://www.sqlite.org/c3ref/snapshot_get.html)
 - [Arq 7 data format](https://www.arqbackup.com/documentation/arq7/English.lproj/dataFormat.html)
 - [AWS deletion of versioned objects](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)
 - [AWS incomplete multipart cleanup](https://docs.aws.amazon.com/AmazonS3/latest/userguide/abort-mpu.html)
