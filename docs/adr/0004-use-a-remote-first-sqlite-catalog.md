@@ -6,580 +6,298 @@ Date: 2026-07-12
 
 ## Decision
 
-Ressik will make committed destination objects authoritative for backup data
-instead of retaining a complete local repository. Each snapshot will have an
-encrypted, immutable SQLite catalog containing its filesystem entries, ordered
-logical block references, Merkle roots, and summary metadata. The snapshot's
-commit marker will authenticate the exact catalog and be published last.
+Ressik will make one configured destination authoritative for each version 2
+repository. Additional destinations will be one-way mirrors of that authority,
+not independent repositories. Mirrors copy the same repository-relative Ressik
+keys and bytes and never make their own retention, packing, compaction, or
+garbage collection decisions.
 
-Snapshot catalogs will reference only repository-scoped BLAKE3 block IDs. They
-will not contain physical object locations. Large sealed blocks may be stored as
-standalone objects. Small sealed blocks may be combined into immutable packs,
-with a separate encrypted and authenticated pack index mapping each logical
-block ID to its byte offset and sealed length. A logical block may temporarily
-have more than one valid physical location.
+Each snapshot will have an encrypted, immutable SQLite catalog containing its
+filesystem entries, ordered logical block references, Merkle roots, and summary
+metadata. Catalogs will reference repository-scoped BLAKE3 block IDs, never
+physical pack locations. A snapshot commit will authenticate each catalog.
 
-The local SQLite database is a rebuildable cache and working index, not the
-authority. It may materialize reference counts, remote acknowledgements, and
-physical locations for speed. Correctness comes from authenticated snapshot
-commits, snapshot catalogs, standalone objects, and pack indexes stored at the
-destinations.
+Every logical change to the authority's active object set will publish an
+immutable, authenticated repository state generation last. The generation
+identifies its authority epoch and predecessor and authenticates the complete
+active set of snapshot commits and pack indexes. Physical cleanup of objects
+retired by that generation follows afterward. This single chain is the atomic
+boundary for backup, retention, compaction, mirroring, and recovery; it is not
+reconciled with another writer.
 
-Local encrypted payload staging and cached object data will have a hard ceiling
-of 5% of the operation's protected-byte measurement: the current preflight for
-backup and authenticated committed statistics for later snapshot operations.
-Operations without such a measurement use no disk payload cache, and
-configuration may lower but not raise the ceiling. Streaming and backpressure
-handle transfers larger than the disk budget; a raisable ceiling would quietly
-regrow the local mirror this decision removes. Ressik will reserve budget before
-writing and leave a snapshot uncommitted rather than exceed the ceiling. The
-ceiling is shared by every process and operation using one cache root rather
-than granted independently to each. Catalog and rebuildable control metadata
-are bounded separately
-because a tree of empty files can contain more metadata than any percentage of
-its plaintext bytes.
+Ressik will store complete sealed blocks either as standalone objects or inside
+immutable packs. Within each backup generation, newly discovered small blocks
+will be emitted in Merkle-tree traversal order and collected into packs targeting
+roughly 4 MiB. Merkle location is only a placement hint: it is not part of block
+identity, and an existing deduplicated block will not move merely to improve
+locality.
 
-Published packs will never be modified in place. Ressik will reclaim
-fragmentation with copy-on-write compaction: publish a replacement pack and its
-index before retiring the old index and, after a safety grace period, the old
-pack. Compaction may fill the replacement with new small blocks from the current
-backup. Snapshot catalogs do not change when a block moves.
+Retention thinning and any future storage-budget enforcement will use the same
+garbage collection path. Ressik will derive reachability from retained snapshot
+catalogs, delete fully dead objects, and compact sufficiently fragmented packs
+by copying their live sealed frames into replacement packs. Snapshot catalogs
+will not change when a block moves.
+
+The local SQLite database will be a rebuildable cache and working index, not the
+authority. Local encrypted payload staging and cached payload data will remain
+bounded to at most 5% of the protected bytes for the operation. Catalog and
+other rebuildable metadata will have a separate bounded allowance.
 
 ## Context
 
-The current backup engine writes every encrypted block into a permanent local
-repository before committing a manifest. This makes local-only backup,
-verification, retention, and restore straightforward, but the first backup of
-N unique bytes requires approximately N additional local bytes. A cloud-first
-backup application should not require enough free space for a second complete
-copy of the protected data.
+The version 1 engine keeps a complete encrypted repository locally before a
+destination can copy it. An initial backup of N unique bytes therefore requires
+approximately N additional local bytes even when the intended durable copy is
+remote.
 
-Ressik also supports multiple destinations. One destination may accept an
-object while another is unavailable. Retaining every pending object locally
-until every destination recovers makes local usage unbounded. After one
-destination durably stores authenticated ciphertext, Ressik can release its
-staged copy and later stream that ciphertext to a lagging destination through
-bounded memory.
+One remote object per small file or tail block creates excessive request and
+metadata overhead. Packing reduces that overhead, but completed object-store
+objects cannot be edited or truncated. A pack can therefore contain both live
+and unreachable blocks after snapshots expire.
 
-Small files create a different scaling problem. One remote object per tiny file
-produces excessive request, listing, and metadata overhead. Packing reduces
-that overhead, but S3 and compatible services cannot delete or overwrite a byte
-range in a completed object. Dead pack members therefore require temporary
-fragmentation or a new copy-on-write pack.
+Deduplication also makes retention a graph problem. A block may be referenced by
+many files and snapshots, and a mutable reference counter can become stale after
+a crash or cache rebuild. Physical deletion must be justified by the retained
+snapshot graph.
 
-Retention is a graph problem. The same logical block may be referenced by many
-files and retained snapshots, and one pack may contain both live and dead
-blocks. A mutable counter alone is insufficient evidence for deletion after
-crashes, interrupted replication, cache repair, or partial destination failure.
+Allowing every destination to choose its own pack layout and deletion history
+would require reconciliation among several writable repositories. Ressik needs
+multiple durable copies, but it does not need multiple concurrent authorities.
 
-## Format transition
+## Authority and mirrors
 
-This decision supersedes ADR 0003's remote publication sequence and key layout
-for new remote-first snapshots. Those snapshots use a separate
-`ressik/v2/<repository-id>/...` destination namespace, distinct catalog,
-pack-index, destination-record, replication-waiver, retention-removal,
-control-checkpoint, epoch-transition, and commit schemas, and distinct
-authenticated object kinds. Version 1 keeps its existing meaning and remains
-readable; a reader must never infer an object's schema from current
-configuration or reinterpret a version 1 manifest as a version 2 catalog.
+The authority is the only destination that accepts new snapshots or changes the
+active object set. A writable authority must provide strongly consistent reads
+and listings for repository state generations. An adapter that cannot establish
+that property may be used as a mirror but not as the authority.
 
-Version 2 deliberately reuses version 1 logical block IDs, block-key
-derivation, and sealed block frames. A version 2 standalone block contains one
-complete version 1 block frame, and a pack contains those frames verbatim. New
-authenticated kinds apply only to version 2 catalogs, indexes, destination and
-control records, and commits. Readers select the block decoder from the
-authenticated frame version rather than the destination key. Changing block
-framing or key derivation requires a later format version.
+A mirror authenticates every source object and synchronizes one committed
+authority generation at a time:
 
-Migration is copy-and-verify, not an in-place rewrite. Ressik authenticates a
-version 1 snapshot, writes its version 2 objects under the separate namespace,
-and publishes the version 2 commit last. It leaves the version 1 snapshot intact
-until every selected snapshot is committed and verified in version 2 and the
-user explicitly removes the old copy. Migration copies authenticated version 1
-block frames without resealing or changing their IDs.
+1. Copy new standalone blocks, packs, and pack indexes.
+2. Copy the encrypted snapshot catalogs.
+3. Copy snapshot commits.
+4. Copy the authenticated state generation last.
+5. Apply deletions only after the generation that retired those objects is
+   active on the mirror.
 
-This decision also amends ADR 0002's deliberately small client surface.
-Version 2 adds ranged and version-specific GetObject; CreateMultipartUpload,
-UploadPart, CompleteMultipartUpload, AbortMultipartUpload, and one page of
-ListMultipartUploads; and one page of ListObjectVersions plus version-specific
-DeleteObject. A read-only GetBucketLifecycleConfiguration operation supports
-provider qualification. PutObject and CompleteMultipartUpload return the
-provider version ID when one exists. Pagination remains above the client.
+An exact mirror has identical active repository-relative Ressik keys and bytes.
+Provider version IDs, ETags, delete markers, and other service metadata need not
+match. A lagging mirror remains restorable at its last complete generation and
+may temporarily retain objects that the authority has deleted.
 
-Multipart uploads use replayable bounded parts and sign each part's SHA-256
-payload. A failed upload is aborted before returning. On startup, while holding
-the repository writer lock, Ressik lists and aborts every incomplete multipart
-upload beneath its repository prefix before publishing new objects. It restarts
-an interrupted object rather than resuming parts, so ListParts is unnecessary.
-For a provider with strong multipart listing, lifecycle cleanup is defense in
-depth. A discovery-only provider must expose a verified lifecycle rule that
-aborts incomplete uploads beneath the repository prefix; without it, the
-adapter is restore-only. SigV4 streaming payloads, presigned URLs, bucket
-mutation, ACLs, tagging, and a general AWS credential chain remain excluded.
+If the authority is unavailable, backup, retention, and compaction stop. Restore
+and verification may use a complete mirror. Promoting a mirror is an explicit
+recovery operation that verifies every block reachable from its active
+generation and starts a new random authority epoch. Before promotion, the
+operator must stop the former writer and revoke or make read-only its destination
+access; Ressik aborts if that external fence cannot be established. The promoted
+state is never merged with a returning authority, which must instead be replaced
+from the new one. Changes newer than the mirror's last complete generation may
+be lost.
 
-## Snapshot publication
+Version 2 assumes one mutating process at a time. A repository writer lock
+serializes backup, retention, compaction, migration, and mirror promotion on one
+machine. Ressik does not provide distributed locking or automatic fencing.
 
-The backed-up SQLite catalog contains one snapshot's logical state. It excludes
-credentials, retry timers, daemon status, destination acknowledgements, and
-physical pack locations. Ressik will materialize the immutable catalog as a
-standalone database through SQLite's Online Backup API rather than copying a
-live database file and its journal. A build that enables SQLite's snapshot API
-may use a snapshot handle to select the source read view, but that optional
-handle does not replace the portable backup operation or become part of the
-repository format.
+## Snapshot publication and physical resolution
 
-A catalog can be far larger than a version 1 manifest, and version 1 seals
-each object in one in-memory operation. Version 2 therefore defines a sealed
-framing for large objects that encrypts, authenticates, uploads, and reads
-them through bounded memory; the concrete framing belongs to the version 2
-format specification.
+The SQLite catalog excludes credentials, retry state, destination state, and
+physical block locations. Ressik will materialize it with SQLite's Online Backup
+API rather than copying a live database and its journal.
 
-For each destination, a snapshot becomes visible only after this sequence:
+A snapshot becomes visible at the authority only after:
 
-1. Upload every new standalone block and pack required by the snapshot.
-2. For each new pack, upload its bytes before its authenticated pack index.
-3. Upload the encrypted SQLite snapshot catalog.
-4. Upload the authenticated snapshot commit marker last.
+1. Uploading every new standalone block and pack required by the snapshot.
+2. Uploading each new pack's encrypted and authenticated index after its pack.
+3. Uploading the encrypted SQLite catalog.
+4. Uploading its authenticated snapshot commit.
+5. Publishing the next authenticated repository state generation last.
 
-The commit records the snapshot ID, catalog digest, and stable IDs of the
-destinations required when the snapshot was captured, and it keeps the
-version 1 commit's summary role: plan identity, display name, creation time,
-Merkle root, and the statistics needed to list snapshots without downloading
-catalogs.
+Each staged payload object may be released as soon as the authority durably
+acknowledges its exact bytes. Mirrors later source that ciphertext from the
+authority, so a snapshot larger than the local payload allowance does not need
+to remain staged until its commit.
 
-Attaching a destination mints a random 128-bit destination ID. Ressik seals a
-destination record under its dedicated version 2 authenticated kind containing
-the repository ID, destination ID, and record version, then stores it beneath
-that destination's repository prefix. Configuration stores the same ID, but a
-remote copy is trusted only after the record authenticates with `repository.key`.
+A pack index binds its pack ID, digest, length, and the block ID, offset, and
+sealed length of each member. Readers reject duplicate block IDs, overlapping or
+out-of-bounds ranges, and frames whose authenticated headers do not match the
+requested logical block.
 
-Recovery authenticates destination records at each configured location. It
-accepts exactly one effective record or requires the user to select an ID
-explicitly. Copying a destination also copies its identity and therefore does
-not create another replica; attaching that copy as an independent obligation
-requires minting and publishing a new destination record. Credentials and
-display names are not part of destination identity, and waivers accept
-historical IDs no longer present in configuration. A snapshot may be complete
-on one destination while another is pending.
+The local database may cache logical-to-physical mappings and reference counts.
+Those rows can accelerate deduplication and garbage collection, but they can be
+rebuilt from the active state generation, its committed catalogs, standalone
+objects, and pack indexes. A logical block may temporarily have more than one
+valid physical location during compaction.
 
-Ressik releases an individual staged object as soon as one destination durably
-acknowledges the exact uploaded bytes. This object-level decision does not make
-the snapshot visible. Before publishing the commit, a destination requires a
-verified acknowledgement for every newly uploaded object. A reused packed block
-requires an authenticated pack index plus a pack object of the bound length; a
-reused standalone block requires its deterministic key and expected sealed
-length. These availability checks do not scrub reused ciphertext. A local staged
-copy is not retained merely because another required destination lags. After
-the first snapshot commit, at least one physically complete destination remains
-pinned until every required destination is physically complete or has an
-authenticated waiver.
-
-Removing a required destination is an explicit authenticated repository
-operation. It publishes a replication-waiver record naming the snapshot and
-destination to every remaining complete destination before clearing that pin.
-Editing configuration or losing credentials never implies a waiver, and
-Ressik refuses to remove a destination while it is the last physically
-complete source for any retained snapshot, regardless of whether replication
-is pending. An expired snapshot is exempt only after its authenticated removal
-record is durable. Ressik also refuses to remove the final current control
-authority while another destination still owes an acknowledgement. Abandoning
-the data itself is a separate, explicitly destructive snapshot deletion rather
-than a waiver. Recovery applies only authenticated waiver and retention-removal
-records, so an unavailable destination pins data until it catches up, the user
-deliberately abandons delivery, or retention has removed the snapshot.
-
-## Control state
-
-Replication waivers and retention-removal records form an authenticated,
-monotonic repository control log. Every record is immutable and sealed once.
-Each removal record repeats the snapshot ID, exact commit and catalog digests,
-and stable required-destination IDs from the commit, so its acknowledgement set
-remains reconstructable after the commit is deleted.
-Periodic authenticated checkpoints contain the cumulative effective records,
-a random control-epoch ID, a generation that increases strictly within that
-epoch, and the previous checkpoint digest. Two different checkpoints at one
-epoch and generation, or a broken digest chain, are corruption. Generations are
-never compared across epochs.
-
-Control records are repository authority rather than rebuildable delivery
-state. Ressik pins each record, or a checkpoint containing it, until every
-non-waived destination required by the affected snapshot acknowledges that
-control state. A record may be collected only after all such destinations
-acknowledge a checkpoint containing it. The current checkpoint remains pinned
-until a later cumulative checkpoint is acknowledged by the same set.
-Configuration edits and ordinary garbage collection never discard the final
-copy of current control state.
-
-Recovery reconciles authenticated checkpoints and later control records before
-admitting destination commits into the repository union. A returning
-destination first receives and acknowledges current control state. Commits
-named by an effective retention-removal record are ignored and scheduled for
-ordered deletion even when their catalogs and payload remain valid.
-
-After local state is lost, a recovered control head is current only when every
-non-waived destination named by visible commits and control records either
-presents a mutually consistent head or acknowledges that head. While any such
-destination is unavailable, read-only restore may expose authenticated data as
-control-unreconciled, but Ressik admits no stale commit into the writable union
-and performs no backup commit, replication, waiver, retention, compaction, or
-garbage collection.
-
-Declaring a missing control authority permanently lost is an explicit
-authenticated recovery operation. It publishes an immutable epoch-transition
-record binding a new random epoch ID to the selected predecessor epoch,
-generation, and checkpoint digest and to the abandoned destination IDs. The
-first checkpoint in the new epoch authenticates that transition. The operation
-requires a destructive warning. A destination later returning with an older or
-forked epoch is rejected until the user explicitly reconciles it.
-
-After applying control state, Ressik lists the remaining snapshot commits and
-pack indexes and authenticates their catalogs. The union of valid commits is
-reconstructed conservatively. The same snapshot ID with different catalog
-digests is corruption: snapshot IDs are unique per capture, a catalog is sealed
-exactly once and never resealed, and every destination receives byte-identical
-catalog ciphertext, re-fetched from a complete destination when local staging
-is gone. Physical locations are rebuilt and checked separately for each
-destination; the presence of an authenticated commit alone does not prove that
-destination is complete.
-
-Each adapter declares whether its provider contract guarantees strongly
-consistent read-after-write and list-after-write visibility. Strong listings
-may establish absence during recovery and garbage collection. Without that
-guarantee, listings are discovery only: Ressik may upload, replicate, restore
-discovered snapshots, and permanently delete already-known versions, but it
-never performs absence-based destructive garbage collection. Uncertain objects
-remain stored. The provider check reports this limitation before enabling the
-destination. AWS S3 and Cloudflare R2 use their documented strong consistency;
-Backblaze B2 remains conservative unless its adapter can establish the same
-guarantee. Immutable keys and version-specific deletion avoid B2's documented
-same-key ordering limitation.
-
-A discovery-only destination cannot be the sole recovered control authority
-after local state loss because an omitted newer checkpoint is indistinguishable
-from absence. It remains restore-only until the explicit authenticated
-authority-recovery operation selects a head and starts a new epoch. Re-enabling
-the destination abandons its prior epoch; every old-epoch record revealed later
-is rejected even when a strongly consistent destination supplied the selected
-head.
-
-A recovered destination becomes the only replication source, or authorizes
-deletion of another copy, only after every reachable logical block resolves on
-that destination and its sealed frame authenticates. During active publication,
-a verified acknowledgement for the exact uploaded bytes establishes that
-object; a rebuild after losing those acknowledgements performs a full scrub.
-Ordinary block reuse follows the same commit-publication availability checks and
-needs no scrub. The explicit verification pass remains the detector for
-provider-side corruption, so evicting acknowledgement rows never forces
-re-uploads. Full frame authentication is required before a recovered destination
-becomes the sole replication source or authorizes deletion of another copy. A
-lagging destination may temporarily retain a snapshot that current retention
-would remove; this can consume extra remote storage but cannot hide or delete a
-retained snapshot.
-
-After restart, a publication with no valid commit at any destination is
-abandoned. Its local remnants are reconciled against the storage ceiling before
-new work begins. Uploaded standalone blocks, packs, indexes, and catalogs are
-unreachable orphans until a later backup reuses them or garbage collection
-removes them.
-
-## Physical object resolution
-
-Standalone block keys remain deterministic from their logical block IDs. A pack
-index binds its pack ID, exact pack digest and length, and a sorted set of unique
-block IDs, offsets, and sealed lengths. Readers reject duplicate IDs,
-overlapping or out-of-bounds ranges, and frames whose authenticated headers do
-not match the requested logical block.
-
-Pack indexes are availability markers. A resolver may use any authenticated
-standalone object or pack index that contains the requested block. Local SQLite
-rows cache these choices with the destination ID as part of every key, but can
-be rebuilt by listing and opening pack indexes. An optional compact index
-checkpoint may accelerate a large rebuild, but it is not required for
-correctness.
-
-Destinations may compact independently because snapshot catalogs contain no
-pack IDs. A lagging destination may therefore use a different physical pack
-layout for the same logical snapshot.
-
-Published destination keys are immutable. Ressik verifies and reuses an
-existing object instead of intentionally overwriting it; an ambiguous retry may
-still create another byte-identical provider version. Every successful write
-records its optional provider version ID in rebuildable physical-location
-state.
-
-A key-only DeleteObject is a visibility operation and is never evidence that
-storage was reclaimed. On a strongly consistent destination, garbage collection
-lists every version and delete marker for a retired key and permanently deletes
-each by version ID. On an unversioned destination, where no version ID exists,
-key-only deletion is sufficient.
-
-A discovery-only versioned provider must expose a verified lifecycle rule that
-permanently expires noncurrent versions and orphan delete markers beneath the
-repository prefix. For every retired key, Ressik first sends a key-only delete
-to create a visibility marker and make the current data version noncurrent. It
-then deletes every discovered version immediately, while the lifecycle rule
-bounds cleanup of versions omitted from listings and removes the orphan marker.
-Without that rule, the adapter is restore-only. This requirement applies to
-Backblaze B2, whose buckets are always versioned.
-
-## Concurrency
-
-Version 2 assumes exactly one mutating writer per repository namespace at a
-time. On one machine, an exclusive lock serializes backup, retention,
-compaction, waivers, and migration, as the version 1 repository lock does
-today. Ressik does not coordinate writers across machines: operating two
-machines against the same namespace is unsupported and can destroy data the
-other writer still needs, and remote coordination or detection is future
-work. Restore and verification never mutate a destination and may run
-anywhere; a concurrent writer's retention can only make an in-progress
-restore fail cleanly, never publish a partial tree.
-
-Garbage collection also applies a configured minimum object age as heuristic
-defense against accidental overlap and recently abandoned uploads. Age alone
-never makes an object deletable and need not exceed an unbounded publication.
-The exclusive writer lock, authenticated root analysis, replication pins, and
-physical-completeness checks are the correctness mechanisms. If age becomes a
-safety boundary later, the protocol must define a finite renewable publication
-lease and abort publication when that lease expires.
+Published packs are immutable. Each member is a complete, independently
+authenticated sealed block frame whose authentication does not depend on its
+pack ID or offset. Compaction can therefore copy ciphertext frames verbatim
+without exposing plaintext or changing their logical block IDs.
 
 ## Retention and compaction
 
-Ressik evaluates retention before pending replication. A retained snapshot with
-an incomplete, non-waived destination remains a replication root and pins at
-least one physically complete source. An expired snapshot does not remain a
-replication root merely because delivery is pending. Retention first publishes
-an authenticated removal record that ends every outstanding replication
-obligation for that snapshot.
+Retention keeps the version 1 policy semantics: `keep_last` and `keep_for` form
+a union, and the newest committed snapshot is always retained. A future storage
+budget policy must define whether it overrides those protections before it
+ships. Either policy first selects retained snapshots; neither makes a reachable
+block directly deletable.
 
-Before deleting any snapshot object at a destination, Ressik durably publishes
-the exact removal record there. Once the record exists on at least one durable
-configured destination, replication of the expired snapshot stops. Each
-reachable destination that acknowledges the record removes the snapshot commit
-first, then its catalog, and only then payload unreachable from retained
-commits. Offline destinations remain untouched until they return, reconcile
-control state, and perform the same ordered deletion.
-
-Removal completes only after every non-waived required destination acknowledges
-the record or a cumulative checkpoint containing it. Until then, that control
-state remains pinned even though snapshot payload need not remain at a
-destination that has already acknowledged and deleted it. A crash before any
-destination stores the record deletes nothing. A crash after storing it resumes
-removal. A crash after deleting the commit leaves unreachable catalog or
-payload for garbage collection. Losing every up-to-date control copy is loss of
-repository authority; Ressik blocks mutation rather than guessing from stale
-commits until the explicit authority-recovery operation selects a new epoch.
+Thinning first constructs a proposed state without the expired snapshot commits
+and recomputes every logical block reachable from its retained catalogs. The new
+state also excludes pack indexes with no live members. Cached reference counts
+are an optimization, not deletion authority, and each pass rebuilds the mark
+rather than resuming a cached set. Only after the proposed generation is durable
+may physical cleanup begin:
 
 - An unreachable standalone block may be deleted.
-- A pack with no live members may have its index retired and then be deleted.
-- A partially live pack remains readable until copy-on-write compaction safely
-  publishes another location for every live member.
+- A pack with no live members may have its retired index and pack deleted.
+- A partially live pack remains readable until replacement locations for all of
+  its live members are committed.
 
-Compaction is opportunistic and bounded. Ressik selects sufficiently fragmented
-packs, copies their live sealed frames verbatim into a new pack, and may add new
-small blocks until the target pack is full. It authenticates every source frame
-before publication and clears any transient plaintext.
+Ressik will consider compaction after retention or budget enforcement rather
+than after every file change. A pack becomes a candidate only when both its dead
+byte count and dead-byte ratio exceed configured thresholds. Exact defaults are
+an implementation choice; they do not affect repository correctness.
 
-The safe replacement sequence at one destination is:
+Compaction combines authenticated live frames from one or more fragmented packs
+into new packs. It proceeds in this order:
 
-1. Upload the replacement pack.
-2. Upload its authenticated pack index, making the new locations discoverable.
-3. Retire the old pack index so new resolvers stop selecting it.
-4. Wait a bounded grace period for readers that already selected the old pack.
-5. Delete the old pack.
+1. Upload replacement packs.
+2. Upload their authenticated indexes.
+3. Publish a new state generation that activates the replacement indexes and
+   retires the old indexes.
+4. After active readers have drained, delete the old indexes and packs.
 
-A restore that loses a race with deletion refreshes physical locations and
-retries from the replacement. A crash before step 2 leaves an unreachable new
-pack. A crash after step 2 leaves duplicate valid locations. A crash after step
-3 leaves an unreachable old pack. Garbage collection can repair all three
-states without losing a committed snapshot.
+A reader that races with deletion refreshes the active generation and retries. A
+crash before the new generation is published leaves unreachable replacement
+objects; a crash after publication leaves redundant old objects. Both states are
+safe to clean during the next garbage-collection pass.
 
-Retirement removes the old index from the active index namespace. On recovery,
-Ressik treats every pack without a discoverable index as newly retired and
-waits a fresh full grace period before deleting it. Losing the locally recorded
-discovery time restarts the grace period. The same conservative rule protects a
-new pack left by a crash before its index was published.
+Compaction requires temporary remote headroom. Budget enforcement deletes fully
+dead objects first and rewrites fragmented packs incrementally, bounding the
+extra storage to a small number of replacement packs. If the provider cannot
+supply that headroom, Ressik reports that compaction is blocked rather than
+deleting an old pack first.
 
-A lost index and a completed retirement look identical in a listing, so
-deleting an indexless pack additionally requires that every live logical
-block resolve to a surviving authenticated location on that destination.
-While any live block is unresolvable, garbage collection halts with an
-integrity error and preserves indexless packs as repair material.
+## Restore and recovery
 
-Provider retention or object-lock policy may delay physical deletion. Ressik
-records deletion as pending and retries after the provider permits it.
+Restore starts from an authenticated state generation, snapshot commit, and
+catalog at the authority or a complete mirror. It queries only the selected
+paths, resolves their logical block IDs through standalone objects and active
+pack indexes, and fetches only the required objects or byte ranges. It
+authenticates every catalog, index, and block and recomputes the existing Merkle
+roots before publishing restored files. Version 2 preserves version 1's path
+validation, traversal rejection, and atomic no-replace publication rules.
 
-## Restore and verification
+Losing local state does not lose repository authority. Ressik rebuilds its cache
+from the latest valid state generation, committed catalogs, and active pack
+indexes at the configured authority. Garbage collection derives liveness from
+that authenticated inventory, not from objects missing in a provider listing.
+It never hydrates a full local repository merely to restore or rebuild the cache.
 
-Restore begins with the selected snapshot's authenticated commit and SQLite
-catalog at any destination where that snapshot is complete. It queries the
-selected path's ordered logical block references, resolves each block from that
-destination's current standalone objects and pack indexes, and fetches only the
-required objects or pack ranges. A bounded local LRU may cache downloaded
-ciphertext but is not required for correctness.
-
-Ressik authenticates every catalog, pack index, and block before use. Existing
-Merkle verification remains the end-to-end check over reconstructed files,
-directories, sources, and plans. A restore never hydrates a full local
-repository first.
-
-Disaster recovery still requires the separately recovered `repository.key`.
-This decision does not upload it or introduce a passphrase-wrapped remote copy.
+Disaster recovery still requires the separately protected `repository.key`.
+This decision does not upload the key, destination credentials, or plaintext
+catalog data.
 
 ## Local storage ceiling
 
-The 5% ceiling covers encrypted block and pack staging, partial uploads retained
-for retry, and cached remote object data. Before writing any of those bytes to
-disk, Ressik performs a current preflight walk with the configured ignores and
-sums the logical sizes of included regular files. The payload budget is at most
-5% of that measurement, rounded down; until preflight finishes, the on-disk
-payload budget is zero. That measurement is the contract for the run: later
-growth or shrinkage does not change the budget, and growth therefore makes it
-more conservative.
+The 5% ceiling covers encrypted block and pack staging, retryable partial
+uploads, and cached remote payload. One cross-process quota ledger per cache root
+counts existing allocated payload bytes and outstanding reservations. Ressik
+reconciles it with crash leftovers at startup and each operation start, and
+reserves the worst-case simultaneous temporary and final allocation before
+writing. Concurrent operations share the smallest active ceiling. Before
+lowering that ceiling, Ressik evicts rebuildable cache; if non-evictable staging
+would still exceed it, the new operation must use no disk payload allowance,
+wait, or fail. Ressik never activates a ceiling that is already exceeded.
 
-One durable, cross-process quota ledger covers every payload spool and cache
-file beneath a cache root. Each operation registers its ceiling before doing
-work; while operations overlap, the machine-wide ceiling is the smallest active
-ceiling. The sum of existing payload files and outstanding reservations may
-never exceed it.
+Backup derives its ceiling from preflight included-file bytes. Restore and
+serial verification use the selected snapshot's authenticated plaintext
+statistics. Recovery, index rebuild, and compaction have no protected-byte
+measurement and therefore stream payload through bounded memory without a disk
+payload cache. Configuration may lower but not raise these ceilings, and an
+operation stops before publishing a snapshot rather than exceed its allowance.
 
-Ressik reconciles the ledger with actual files on startup, at every operation
-start, and whenever the active ceiling decreases. It counts crash leftovers and
-evicts rebuildable cache before granting a new reservation. If non-evictable
-staging prevents compliance, the operation that would lower the ceiling waits
-or fails without writing. When no operation is active, the last enforced
-ceiling remains in force.
+SQLite working files, encrypted catalogs, physical-location rows, and other
+rebuildable metadata use a separate counter and configured cap in the same
+reservation ledger because metadata for many empty or tiny files can exceed any
+percentage of payload bytes. Ressik reconciles both counters at startup and each
+operation start and fails a metadata write if it cannot measure allocated bytes
+conservatively. The encrypted catalog must fit this allowance as a replayable
+single-object upload; otherwise backup fails without publishing a new state
+generation. Ressik reports payload and metadata usage separately.
 
-Every payload write reserves its complete worst-case simultaneous footprint,
-including temporary and final copies used by an atomic replacement, under the
-quota lock before creating either file. Direct upload with bounded memory is
-used when an object cannot fit in the remaining disk budget.
+## Format transition
 
-Payload accounting uses conservative allocated bytes rather than logical file
-length alone. Ressik rounds each dense payload file's planned temporary and
-final lengths up to the containing volume's allocation unit and counts all
-simultaneous copies. It does not create sparse or reflinked payload files. If the
-allocation unit cannot be determined safely, Ressik uses zero-disk payload
-streaming instead of guessing.
+Version 2 uses a separate `ressik/v2/<repository-id>/...` namespace and distinct
+catalog, pack-index, repository-state, and commit schemas. Version 1 keeps its
+existing meaning and remains readable. Version 2 reuses version 1
+repository-scoped block IDs, key derivation, and sealed block frames so migration
+can copy authenticated frames without resealing them.
 
-The non-raisable payload-cache rule applies to every operation. Backup uses at
-most 5% of the current preflight measurement. Restore uses at most 5% of the
-selected snapshot's authenticated included-plaintext statistic. Verification
-and catch-up replication process snapshots serially under each snapshot's
-authenticated budget. Recovery, index rebuild, and standalone compaction have
-no single protected-byte total and therefore use zero-disk payload streaming
-through bounded memory. An optional absolute cache setting may lower these
-limits but cannot raise them or replace them with a stale measurement.
+Migration is copy-and-verify, not an in-place rewrite. Ressik leaves version 1
+snapshots intact until the selected version 2 snapshots are committed and
+verified and the user explicitly removes the old copy.
 
-When all destinations are unavailable, Ressik cannot both preserve an
-arbitrarily large unfinished snapshot and obey the ceiling. It stops before the
-next reservation and reports that destination delivery is blocking progress.
-Compaction performed during a backup may share that run's reserved budget;
-otherwise it streams without disk payload staging. It defers when neither path
-can complete safely.
-
-Catalog and rebuildable control state have a separate configured absolute byte
-cap shared by every process using the cache root. This allowance may be raised
-when an active source tree requires more metadata. The same cross-process quota
-lock serializes metadata reservations. The working database, WAL and
-shared-memory files, SQLite backup output, encrypted catalog, atomic-write
-temporaries, delivery acknowledgements, and physical-location rows reserve
-their worst-case simultaneous allocated sizes against it. Rebuildable history
-is evicted before the active snapshot fails. If a platform cannot determine a
-conservative allocated size, Ressik fails the metadata-writing operation rather
-than weakening the cap.
-
-Ressik reports payload and metadata usage and limits separately. Directory
-entries and other filesystem bookkeeping are reported with the control
-allowance, but their platform-dependent cost prevents a portable promise that
-the volume's free-space delta exactly equals both limits. Metadata for empty or
-tiny files can exceed 5% of their content bytes, so total Ressik disk use can
-exceed 5% by the explicit metadata allowance; encrypted payload staging and
-cache cannot.
+This decision extends ADR 0003 with a version 2 publication layout. It amends ADR
+0002 to require byte-range `GetObject` for efficient pack reads and, for
+versioned providers, paginated object-version listing and version-specific
+deletion. Roughly 4 MiB packs and metadata-capped catalogs use ordinary
+`PutObject`; multipart upload remains a separate decision. An adapter must prove
+that deletion reclaims provider versions before storage-budget enforcement may
+count those bytes as reclaimed.
 
 ## Consequences
 
-Initial backups no longer require a second local copy of all protected data.
-SQLite makes individual-file restore and logical reachability directly
-queryable, while logical-to-physical indirection allows pack compaction without
-rewriting snapshot metadata. A lost cache can be reconstructed from remote
-commits, catalogs, and pack indexes.
+Remote backups no longer require a second full local copy. SQLite makes
+individual-file restore and reachability directly queryable. Packing amortizes
+remote operations for small files, while logical-to-physical indirection permits
+compaction without rewriting snapshot catalogs. A mirror copies one physical
+layout instead of maintaining an independently reconciled repository.
 
-The implementation now owes a SQLite integration that preserves
-cross-compilation and behaves identically on every supported platform,
-versioned schemas, consistent checkpoint creation, per-destination
-reconciliation, range reads, authenticated pack indexes, copy-on-write
-compaction, and failure-injection tests across every publication boundary.
-The catalog also makes SQLite's stable, documented file format part of the
-repository format. Cache rebuild may require listing and opening many pack
-indexes. Compaction temporarily consumes additional remote
-bytes and transfer operations. Restoring one path still requires downloading
-that snapshot's catalog, and publishing a snapshot uploads a complete catalog
-even when most file metadata is unchanged.
+The implementation now owes a portable SQLite integration, a version 2 format
+specification, authenticated repository-state generations and pack indexes,
+byte-range reads, ordered mirror synchronization, copy-on-write compaction, and
+failure-injection tests around every publication boundary. Rebuilding a lost
+cache may require opening many catalogs and indexes. Publishing each snapshot
+uploads a complete SQLite catalog even when most metadata is unchanged.
 
-Monotonic control state trades availability for deletion safety. After local
-state loss, an unavailable control authority can block every mutation until the
-destinations reconcile or the user performs destructive authority recovery. A
-discovery-only provider needs verified lifecycle cleanup and may become
-restore-only. Version-aware deletion and crash-safe multipart upload expand the
-minimal S3 surface. The shared smallest-active cache ceiling can make concurrent
-operations stream, wait, or fail instead of using independent caches.
+The authority is an availability dependency. Automatic failover is unavailable,
+and an asynchronous mirror can lose the authority's newest state. Compaction
+consumes reads, writes, and temporary remote storage. The 5% local payload limit
+can reduce throughput when a source or destination is slow.
 
-Every run also pays a preflight walk over the included sources before its
-first payload write, which delays capture start on large or slow
-filesystems. Backpressure couples capture speed to destination throughput,
-so a first backup of a large source over a slow uplink holds its capture
-window open longer and is more exposed to source mutation before commit; an
-abandoned attempt leaves reusable uploaded blocks, so repeated runs converge
-instead of starting over. Catching up a lagging destination streams full
-history through the client and pays provider egress, independent compaction
-multiplies pack indexes and transfer work by destination count, and a
-migrating repository stores version 1 and version 2 copies until the user
-removes the old one.
-
-Version 2 requires a new repository-format specification and an explicit
-version 1 migration command before it can replace the current engine. Once
-written, that specification is normative and this record keeps the rationale.
-Version 1 read support remains until migrated snapshots have been verified
-and deliberately removed; ending version 1 read support product-wide is a
-separate later decision that this ADR does not schedule.
-
-Plans need at least one durable destination. A local filesystem may implement
-the destination contract, but Ressik will not create an implicit full local
-mirror for a cloud-backed plan.
-
-The logical-to-physical indirection contains the experimental pack complexity.
-Ressik can ship standalone-only storage before publishing any pack format. Once
-packs have been published, disabling new packing still requires existing packs
-to remain readable or to be drained through the compactor.
+Once packs have been published, disabling new packing does not remove the need
+to read existing packs. They must remain supported or be drained through
+compaction.
 
 ## Alternatives considered
 
-- A complete local mirror provides simple offline backup and restore, but
-  requires approximately the protected data size in additional local storage.
-- One complete SQLite repository checkpoint per backup simplifies cache
-  recovery, but reuploads all retained history and cannot be produced from a
-  bounded cache after history has been evicted.
-- A local SQLite cache with JSON manifests as the remote authority avoids a
-  SQLite dependency in the format, but duplicates the logical schema and makes
-  cache rebuild, querying, and repair follow separate code paths.
-- Mutable packs that reuse dead byte ranges avoid copying live members, but
-  object stores replace whole objects rather than modifying completed ranges.
-  Overwriting a pack in place would also make crashes destructive.
-- One remote object per logical block makes deletion simple, but performs poorly
-  for repositories containing many small files.
-- Adopting restic's or kopia's pack and index conventions would reuse proven
-  designs, but both assume their own chunking, key schedules, and repository
-  layouts, and Ressik would inherit format decisions without gaining their
-  tooling.
+- A complete local mirror simplifies offline operation but requires
+  approximately the protected data size in additional local storage.
+- Independently writable destinations improve write availability but require
+  conflict resolution for retention, placement indexes, and garbage collection.
+- One remote object per logical block makes reclamation simple but performs
+  poorly for repositories containing many small files.
+- Mutable packs avoid copying live members, but object stores replace complete
+  objects and an interrupted overwrite could destroy retained data.
+- Packing strictly by Merkle location improves locality, but deduplicated blocks
+  may have multiple parents and ancestor hashes change with their descendants.
+  Ressik therefore uses traversal location only as a placement hint for new
+  blocks.
+- Never compacting partially live packs avoids rewrite cost but allows dead bytes
+  to grow without bound.
 
 ## Non-goals
 
+- Automatic authority election or multi-writer repositories.
 - Cross-repository or cross-user deduplication.
-- Completing backups while every destination is unavailable and staging is
-  full.
+- Completing backups while the authority is unavailable and staging is full.
 - Uploading `repository.key`, credentials, or plaintext catalog data.
-- Choosing permanent pack-size, packing-threshold, grace-period, minimum-age,
-  cache-cap, or catalog-cap defaults in this ADR.
+- Fixing permanent pack-size, fragmentation-threshold, metadata-cap, or
+  reader-drain defaults in this ADR.
+- Choosing how a future storage budget interacts with time/count retention.
 
 ## References
 
@@ -587,11 +305,3 @@ to remain readable or to be drained through the compactor.
 - [ADR 0003: Define a repository transfer protocol](0003-define-repository-transfer-protocol.md)
 - [Repository format version 1](../repository-format.md)
 - [SQLite Online Backup API](https://www.sqlite.org/backup.html)
-- [SQLite snapshot API](https://www.sqlite.org/c3ref/snapshot_get.html)
-- [AWS deletion of versioned objects](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)
-- [AWS incomplete multipart cleanup](https://docs.aws.amazon.com/AmazonS3/latest/userguide/abort-mpu.html)
-- [Amazon S3 consistency model](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel)
-- [Cloudflare R2 consistency model](https://developers.cloudflare.com/r2/reference/consistency/)
-- [Backblaze B2 bucket versions](https://www.backblaze.com/docs/cloud-storage-s3-compatible-api-bucket-versions)
-- [Backblaze B2 S3-compatible API](https://www.backblaze.com/docs/en/cloud-storage-call-the-s3-compatible-api)
-- [Backblaze B2 lifecycle configuration](https://www.backblaze.com/apidocs/s3-get-lifecycle-configuration)

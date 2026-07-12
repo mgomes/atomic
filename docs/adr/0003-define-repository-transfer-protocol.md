@@ -1,6 +1,6 @@
 # ADR 0003: Define a repository transfer protocol
 
-Status: Accepted, partially superseded by
+Status: Accepted, extended by
 [ADR 0004](0004-use-a-remote-first-sqlite-catalog.md)
 
 Date: 2026-07-11
