@@ -32,8 +32,10 @@ Operations without such a measurement use no disk payload cache, and
 configuration may lower but not raise the ceiling. Streaming and backpressure
 handle transfers larger than the disk budget; a raisable ceiling would quietly
 regrow the local mirror this decision removes. Ressik will reserve budget before
-writing and leave a snapshot uncommitted rather than exceed the ceiling. Catalog
-and rebuildable control metadata are bounded separately
+writing and leave a snapshot uncommitted rather than exceed the ceiling. The
+ceiling is shared by every process and operation using one cache root rather
+than granted independently to each. Catalog and rebuildable control metadata
+are bounded separately
 because a tree of empty files can contain more metadata than any percentage of
 its plaintext bytes.
 
@@ -426,13 +428,23 @@ payload budget is zero. That measurement is the contract for the run: later
 growth or shrinkage does not change the budget, and growth therefore makes it
 more conservative.
 
-Every filesystem write in those categories reserves its complete worst-case
-simultaneous footprint first, including temporary and final copies used by an
-atomic replacement. A cross-process spool lock excludes other writers for the
-lifetime of each reservation. On startup Ressik measures all existing spool and
-cache files, counts crash leftovers before granting a new reservation, and
-deletes or validates them under the same lock. Direct upload with bounded memory
-is used when an object cannot fit in the remaining disk budget.
+One durable, cross-process quota ledger covers every payload spool and cache
+file beneath a cache root. Each operation registers its ceiling before doing
+work; while operations overlap, the machine-wide ceiling is the smallest active
+ceiling. The sum of existing payload files and outstanding reservations may
+never exceed it.
+
+Ressik reconciles the ledger with actual files on startup, at every operation
+start, and whenever the active ceiling decreases. It counts crash leftovers and
+evicts rebuildable cache before granting a new reservation. If non-evictable
+staging prevents compliance, the operation that would lower the ceiling waits
+or fails without writing. When no operation is active, the last enforced
+ceiling remains in force.
+
+Every payload write reserves its complete worst-case simultaneous footprint,
+including temporary and final copies used by an atomic replacement, under the
+quota lock before creating either file. Direct upload with bounded memory is
+used when an object cannot fit in the remaining disk budget.
 
 Payload accounting uses conservative allocated bytes rather than logical file
 length alone. Ressik rounds each dense payload file's planned temporary and
@@ -458,12 +470,15 @@ otherwise it streams without disk payload staging. It defers when neither path
 can complete safely.
 
 Catalog and rebuildable control state have a separate configured absolute byte
-cap. This allowance may be raised when an active source tree requires more
-metadata. The working database, WAL and shared-memory files, SQLite backup
-output, encrypted catalog, atomic-write temporaries, delivery acknowledgements,
-and physical-location rows reserve their worst-case simultaneous allocated
-sizes against it. Rebuildable history is evicted before the active snapshot
-fails.
+cap shared by every process using the cache root. This allowance may be raised
+when an active source tree requires more metadata. The same cross-process quota
+lock serializes metadata reservations. The working database, WAL and
+shared-memory files, SQLite backup output, encrypted catalog, atomic-write
+temporaries, delivery acknowledgements, and physical-location rows reserve
+their worst-case simultaneous allocated sizes against it. Rebuildable history
+is evicted before the active snapshot fails. If a platform cannot determine a
+conservative allocated size, Ressik fails the metadata-writing operation rather
+than weakening the cap.
 
 Ressik reports payload and metadata usage and limits separately. Directory
 entries and other filesystem bookkeeping are reported with the control
