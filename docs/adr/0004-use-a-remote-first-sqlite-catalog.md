@@ -115,7 +115,14 @@ For each destination, a snapshot becomes visible only after this sequence:
 4. Upload the authenticated snapshot commit marker last.
 
 The commit records the snapshot ID, catalog digest, and stable IDs of the
-destinations required when the snapshot was captured. A snapshot may be
+destinations required when the snapshot was captured, and it keeps the
+version 1 commit's summary role: plan identity, display name, creation time,
+Merkle root, and the statistics needed to list snapshots without downloading
+catalogs. A destination's stable ID is a random value minted when the
+destination is attached and recorded at the destination as well as in
+configuration, so recovery on a new machine re-matches configured
+destinations to recorded obligations, and waivers accept historical IDs that
+no longer appear in configuration. A snapshot may be
 complete on one destination while another is pending. Once at least one
 physically complete destination can supply every required object, local staged
 payload may be released. Until every required destination is physically complete
@@ -137,7 +144,10 @@ removed the snapshot.
 If local cache and delivery state are lost, Ressik lists snapshot commits and
 pack indexes at the configured destinations and authenticates their catalogs.
 The union of valid commits is reconstructed conservatively. The same snapshot
-ID with different catalog digests is corruption. Physical locations are rebuilt
+ID with different catalog digests is corruption: snapshot IDs are unique per
+capture, a catalog is sealed exactly once and never resealed, and every
+destination receives byte-identical catalog ciphertext, re-fetched from a
+complete destination when local staging is gone. Physical locations are rebuilt
 and checked separately for each destination; the presence of an authenticated
 commit alone does not prove that destination is complete. Recovery and
 garbage collection treat listings as complete, so version 2 destinations
@@ -148,10 +158,14 @@ A recovered destination becomes the only replication source, or authorizes
 deletion of another copy, only after every reachable logical block resolves on
 that destination and its sealed frame authenticates. During active publication,
 a verified acknowledgement for the exact uploaded bytes establishes that
-object; a rebuild after losing those acknowledgements performs a full scrub. A
-lagging destination may temporarily retain a snapshot that current retention
-would remove; this can consume extra remote storage but cannot hide or delete a
-retained snapshot.
+object; a rebuild after losing those acknowledgements performs a full scrub.
+Ordinary block reuse needs no scrub: a new snapshot may reuse a logical block
+when an authenticated pack index or standalone-object listing places it at a
+required destination, and the explicit verification pass remains the detector
+for provider-side corruption, so evicting acknowledgement rows never forces
+re-uploads. A lagging destination may temporarily retain a snapshot that
+current retention would remove; this can consume extra remote storage but
+cannot hide or delete a retained snapshot.
 
 After restart, a publication with no valid commit at any destination is
 abandoned. Its local remnants are reconciled against the storage ceiling before
