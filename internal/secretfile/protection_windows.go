@@ -269,18 +269,6 @@ func syncProtectedDirectory(string) error {
 }
 
 func publishNoReplace(source, destination string) error {
-	return moveFile(source, destination, windows.MOVEFILE_WRITE_THROUGH)
-}
-
-func publishReplace(source, destination string) error {
-	return moveFile(
-		source,
-		destination,
-		windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH,
-	)
-}
-
-func moveFile(source, destination string, flags uint32) error {
 	oldPath, err := windows.UTF16PtrFromString(winpath.Extended(source))
 	if err != nil {
 		return &os.LinkError{Op: "rename", Old: source, New: destination, Err: err}
@@ -289,9 +277,67 @@ func moveFile(source, destination string, flags uint32) error {
 	if err != nil {
 		return &os.LinkError{Op: "rename", Old: source, New: destination, Err: err}
 	}
-	if err := windows.MoveFileEx(oldPath, newPath, flags); err != nil {
+	if err := windows.MoveFileEx(oldPath, newPath, windows.MOVEFILE_WRITE_THROUGH); err != nil {
 		return &os.LinkError{Op: "rename", Old: source, New: destination, Err: err}
 	}
+	return nil
+}
+
+// fileRenameInfo mirrors Windows FILE_RENAME_INFO for FileRenameInfoEx.
+type fileRenameInfo struct {
+	flags          uint32
+	rootDirectory  windows.Handle
+	fileNameLength uint32
+	fileName       [1]uint16
+}
+
+func publishReplace(source, destination string) (result error) {
+	sourcePath, err := windows.UTF16PtrFromString(winpath.Extended(source))
+	if err != nil {
+		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: err}
+	}
+	handle, err := windows.CreateFile(
+		sourcePath,
+		windows.DELETE|windows.SYNCHRONIZE,
+		windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+		nil,
+		windows.OPEN_EXISTING,
+		windows.FILE_FLAG_OPEN_REPARSE_POINT,
+		0,
+	)
+	if err != nil {
+		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: err}
+	}
+	defer func() {
+		if err := windows.CloseHandle(handle); err != nil {
+			result = errors.Join(result, fmt.Errorf("close replacement source: %w", err))
+		}
+	}()
+
+	destinationName, err := windows.UTF16FromString(winpath.Extended(destination))
+	if err != nil {
+		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: err}
+	}
+	destinationName = destinationName[:len(destinationName)-1]
+	var layout fileRenameInfo
+	bufferSize := int(unsafe.Offsetof(layout.fileName)) + len(destinationName)*2
+	buffer := make([]byte, bufferSize)
+	info := (*fileRenameInfo)(unsafe.Pointer(&buffer[0]))
+	// POSIX semantics keeps old reader handles valid while new opens resolve to
+	// the replacement, avoiding the visibility gap in ReplaceFileW.
+	info.flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
+	info.fileNameLength = uint32(len(destinationName) * 2)
+	copy(unsafe.Slice(&info.fileName[0], len(destinationName)), destinationName)
+
+	if err := windows.SetFileInformationByHandle(
+		handle,
+		windows.FileRenameInfoEx,
+		&buffer[0],
+		uint32(len(buffer)),
+	); err != nil {
+		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: err}
+	}
+	runtime.KeepAlive(buffer)
 	return nil
 }
 
