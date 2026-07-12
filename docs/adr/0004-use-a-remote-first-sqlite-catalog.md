@@ -164,12 +164,15 @@ on one destination while another is pending.
 
 Ressik releases an individual staged object as soon as one destination durably
 acknowledges the exact uploaded bytes. This object-level decision does not make
-the snapshot visible: a destination publishes the commit only after it can
-resolve and authenticate every referenced object. A local staged copy is not
-retained merely because another required destination lags. After the first
-snapshot commit, at least one physically complete destination remains pinned
-until every required destination is physically complete or has an authenticated
-waiver.
+the snapshot visible. Before publishing the commit, a destination requires a
+verified acknowledgement for every newly uploaded object. A reused packed block
+requires an authenticated pack index plus a pack object of the bound length; a
+reused standalone block requires its deterministic key and expected sealed
+length. These availability checks do not scrub reused ciphertext. A local staged
+copy is not retained merely because another required destination lags. After
+the first snapshot commit, at least one physically complete destination remains
+pinned until every required destination is physically complete or has an
+authenticated waiver.
 
 Removing a required destination is an explicit authenticated repository
 operation. It publishes a replication-waiver record naming the snapshot and
@@ -264,13 +267,14 @@ deletion of another copy, only after every reachable logical block resolves on
 that destination and its sealed frame authenticates. During active publication,
 a verified acknowledgement for the exact uploaded bytes establishes that
 object; a rebuild after losing those acknowledgements performs a full scrub.
-Ordinary block reuse needs no scrub: a new snapshot may reuse a logical block
-when an authenticated pack index or standalone-object listing places it at a
-required destination, and the explicit verification pass remains the detector
-for provider-side corruption, so evicting acknowledgement rows never forces
-re-uploads. A lagging destination may temporarily retain a snapshot that
-current retention would remove; this can consume extra remote storage but
-cannot hide or delete a retained snapshot.
+Ordinary block reuse follows the same commit-publication availability checks and
+needs no scrub. The explicit verification pass remains the detector for
+provider-side corruption, so evicting acknowledgement rows never forces
+re-uploads. Full frame authentication is required before a recovered destination
+becomes the sole replication source or authorizes deletion of another copy. A
+lagging destination may temporarily retain a snapshot that current retention
+would remove; this can consume extra remote storage but cannot hide or delete a
+retained snapshot.
 
 After restart, a publication with no valid commit at any destination is
 abandoned. Its local remnants are reconciled against the storage ceiling before
