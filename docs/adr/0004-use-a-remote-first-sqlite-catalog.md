@@ -71,8 +71,8 @@ crashes, interrupted replication, cache repair, or partial destination failure.
 This decision supersedes ADR 0003's remote publication sequence and key layout
 for new remote-first snapshots. Those snapshots use a separate
 `ressik/v2/<repository-id>/...` destination namespace, distinct catalog,
-pack-index, replication-waiver, and commit schemas, and distinct authenticated
-object kinds. Version 1 keeps its existing meaning and remains readable; a
+pack-index, replication-waiver, retention-removal, and commit schemas, and
+distinct authenticated object kinds. Version 1 keeps its existing meaning and remains readable; a
 reader must never infer an object's schema from current configuration or
 reinterpret a version 1 manifest as a version 2 catalog.
 
@@ -130,8 +130,9 @@ Ressik refuses to remove a destination while it is the last physically
 complete source for any snapshot with outstanding replication obligations;
 abandoning the data itself is a separate, explicitly destructive snapshot
 deletion rather than a waiver. Recovery applies only authenticated waiver
-records, so an unavailable destination pins data until it either catches up
-or the user deliberately abandons delivery.
+and retention-removal records, so an unavailable destination pins data until
+it catches up, the user deliberately abandons delivery, or retention has
+removed the snapshot.
 
 If local cache and delivery state are lost, Ressik lists snapshot commits and
 pack indexes at the configured destinations and authenticates their catalogs.
@@ -203,7 +204,13 @@ destination is neither authenticated-waived nor verified physically complete;
 commit presence is necessary but not sufficient. At least one physically
 complete source remains pinned. Only a snapshot outside that root set is
 expired; Ressik then removes its commit marker before its catalog and marks
-logical blocks from the remaining roots.
+logical blocks from the remaining roots. Before removing any commit marker,
+expiry publishes an authenticated retention-removal record naming the
+snapshot to every reachable required destination. Recovery treats that
+record as ending the snapshot's replication obligations, so an expiry
+interrupted between destinations resumes as a removal instead of
+resurrecting the snapshot as a replication root that would re-replicate
+already-deleted blocks.
 
 - An unreachable standalone block may be deleted.
 - A pack with no live members may have its index retired and then be deleted.
