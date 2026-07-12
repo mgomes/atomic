@@ -27,7 +27,10 @@ destinations.
 
 Local encrypted payload staging and cached object data will have a hard ceiling
 of 5% of the current run's preflight measurement of included regular file bytes;
-configuration may lower but not raise it. Ressik will reserve budget before
+configuration may lower but not raise it. Five percent is small enough that
+no one provisions disk for a second copy and large enough to keep uploads
+streaming; a raisable ceiling would quietly regrow the local mirror this
+decision removes. Ressik will reserve budget before
 writing, apply backpressure, and leave a snapshot uncommitted rather than exceed
 the ceiling. Catalog and rebuildable control metadata are bounded separately
 because a tree of empty files can contain more metadata than any percentage of
@@ -301,6 +304,11 @@ cache files, counts crash leftovers before granting a new reservation, and
 deletes or validates them under the same lock. Direct upload with bounded memory
 is used when an object cannot fit in the remaining disk budget.
 
+Operations without a preflight measurement do not inherit a stale one.
+Restore, verification, and cache rebuild bound their downloaded ciphertext
+with fixed configured caches instead, so a machine that only restores never
+computes the payload ceiling.
+
 When all destinations are unavailable, Ressik cannot both preserve an
 arbitrarily large unfinished snapshot and obey the ceiling. It stops before the
 next reservation and reports that destination delivery is blocking progress.
@@ -376,7 +384,7 @@ to remain readable or to be drained through the compactor.
   full.
 - Uploading `repository.key`, credentials, or plaintext catalog data.
 - Choosing permanent pack-size, packing-threshold, grace-period, minimum-age,
-  or catalog-cap defaults in this ADR.
+  cache-cap, or catalog-cap defaults in this ADR.
 
 ## References
 
