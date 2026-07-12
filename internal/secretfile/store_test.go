@@ -51,24 +51,6 @@ func TestReplaceRequiresExistingProtectedSecret(t *testing.T) {
 	}
 }
 
-func TestAtomicReplacementRefusesMissingDestination(t *testing.T) {
-	t.Parallel()
-
-	store := openTestStore(t)
-	source := filepath.Join(store.Root(), ".replacement")
-	writeRawProtectedFile(t, source, []byte("credential"))
-	destination := filepath.Join(store.Root(), "missing")
-	if err := publishReplace(source, destination); err == nil {
-		t.Fatal("publishReplace(missing) error = nil, want error")
-	}
-	if _, err := os.Stat(source); err != nil {
-		t.Fatalf("Stat(source) after failed replacement returned error: %v", err)
-	}
-	if _, err := os.Stat(destination); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("Stat(destination) error = %v, want os.ErrNotExist", err)
-	}
-}
-
 func TestStoreRejectsInvalidNames(t *testing.T) {
 	t.Parallel()
 

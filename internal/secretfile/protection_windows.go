@@ -18,8 +18,6 @@ import (
 
 const fileAllAccess windows.ACCESS_MASK = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0x1ff
 
-var replaceFileW = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFileW")
-
 func ensureProtectedDirectory(path string) error {
 	if err := fsdurable.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -271,6 +269,18 @@ func syncProtectedDirectory(string) error {
 }
 
 func publishNoReplace(source, destination string) error {
+	return moveFile(source, destination, windows.MOVEFILE_WRITE_THROUGH)
+}
+
+func publishReplace(source, destination string) error {
+	return moveFile(
+		source,
+		destination,
+		windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH,
+	)
+}
+
+func moveFile(source, destination string, flags uint32) error {
 	oldPath, err := windows.UTF16PtrFromString(winpath.Extended(source))
 	if err != nil {
 		return &os.LinkError{Op: "rename", Old: source, New: destination, Err: err}
@@ -279,36 +289,8 @@ func publishNoReplace(source, destination string) error {
 	if err != nil {
 		return &os.LinkError{Op: "rename", Old: source, New: destination, Err: err}
 	}
-	if err := windows.MoveFileEx(oldPath, newPath, windows.MOVEFILE_WRITE_THROUGH); err != nil {
+	if err := windows.MoveFileEx(oldPath, newPath, flags); err != nil {
 		return &os.LinkError{Op: "rename", Old: source, New: destination, Err: err}
-	}
-	return nil
-}
-
-func publishReplace(source, destination string) error {
-	replacedPath, err := windows.UTF16PtrFromString(winpath.Extended(destination))
-	if err != nil {
-		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: err}
-	}
-	replacementPath, err := windows.UTF16PtrFromString(winpath.Extended(source))
-	if err != nil {
-		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: err}
-	}
-	result, _, callErr := replaceFileW.Call(
-		uintptr(unsafe.Pointer(replacedPath)),
-		uintptr(unsafe.Pointer(replacementPath)),
-		0,
-		0,
-		0,
-		0,
-	)
-	runtime.KeepAlive(replacedPath)
-	runtime.KeepAlive(replacementPath)
-	if result == 0 {
-		if callErr == windows.ERROR_SUCCESS {
-			callErr = windows.ERROR_GEN_FAILURE
-		}
-		return &os.LinkError{Op: "replace", Old: source, New: destination, Err: callErr}
 	}
 	return nil
 }
