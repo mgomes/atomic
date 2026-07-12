@@ -516,6 +516,14 @@ bytes and transfer operations. Restoring one path still requires downloading
 that snapshot's catalog, and publishing a snapshot uploads a complete catalog
 even when most file metadata is unchanged.
 
+Monotonic control state trades availability for deletion safety. After local
+state loss, an unavailable control authority can block every mutation until the
+destinations reconcile or the user performs destructive authority recovery. A
+discovery-only provider needs verified lifecycle cleanup and may become
+restore-only. Version-aware deletion and crash-safe multipart upload expand the
+minimal S3 surface. The shared smallest-active cache ceiling can make concurrent
+operations stream, wait, or fail instead of using independent caches.
+
 Every run also pays a preflight walk over the included sources before its
 first payload write, which delays capture start on large or slow
 filesystems. Backpressure couples capture speed to destination throughput,
