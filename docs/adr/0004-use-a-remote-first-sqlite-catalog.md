@@ -155,6 +155,23 @@ Destinations may compact independently because snapshot catalogs contain no
 pack IDs. A lagging destination may therefore use a different physical pack
 layout for the same logical snapshot.
 
+## Concurrency
+
+Version 2 assumes exactly one mutating writer per repository namespace at a
+time. On one machine, an exclusive lock serializes backup, retention,
+compaction, waivers, and migration, as the version 1 repository lock does
+today. Ressik does not coordinate writers across machines: operating two
+machines against the same namespace is unsupported and can destroy data the
+other writer still needs, and remote coordination or detection is future
+work. Restore and verification never mutate a destination and may run
+anywhere; a concurrent writer's retention can only make an in-progress
+restore fail cleanly, never publish a partial tree.
+
+As defense in depth against imperfect deployments, garbage collection never
+deletes a destination object younger than a configured minimum age that
+exceeds the longest plausible publication. This generalizes the pack grace
+period to standalone blocks, catalogs, indexes, and control records.
+
 ## Retention and compaction
 
 Before deleting anything, Ressik derives the retained root set from valid
@@ -308,8 +325,8 @@ to remain readable or to be drained through the compactor.
 - Completing backups while every destination is unavailable and staging is
   full.
 - Uploading `repository.key`, credentials, or plaintext catalog data.
-- Choosing permanent pack-size, packing-threshold, grace-period, or catalog-cap
-  defaults in this ADR.
+- Choosing permanent pack-size, packing-threshold, grace-period, minimum-age,
+  or catalog-cap defaults in this ADR.
 
 ## References
 
