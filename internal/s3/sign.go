@@ -46,7 +46,9 @@ func (c *Client) sign(request *http.Request, payloadHash [sha256.Size]byte, at t
 		hex.EncodeToString(canonicalDigest[:]),
 	}, "\n")
 
-	dateKey := hmacSHA256([]byte("AWS4"+c.credentials.SecretAccessKey), date)
+	rootKey := append([]byte("AWS4"), c.credentials.SecretAccessKey...)
+	defer clear(rootKey)
+	dateKey := hmacSHA256(rootKey, date)
 	regionKey := hmacSHA256(dateKey, c.region)
 	serviceKey := hmacSHA256(regionKey, "s3")
 	signingKey := hmacSHA256(serviceKey, "aws4_request")
