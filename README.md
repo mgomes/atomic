@@ -246,6 +246,32 @@ unrecoverable, so copy it to a separate secure recovery location. On POSIX
 systems Ressik requires that it have no group or other permissions; on Windows
 its protection depends on the containing profile directory ACL.
 
+Remote destination credentials will not be embedded in YAML, repository
+metadata, or daemon state. Ressik's credential-store foundation puts them in a
+directory namespaced by the canonical config path beneath the platform
+application-data folder. On POSIX, the directory must be owned by the current
+user with exact mode `0700`, and each credential must be a regular, owner-only
+`0600` file. macOS extended ACLs are rejected. On Windows, Ressik enforces the
+equivalent current-user-only protected DACL. Insecure files, symlinks or
+reparse points, hard links, and broadened permissions are rejected rather than
+repaired silently. Writes and credential rotations are synced and atomically
+published.
+
+| Platform | Credential directory |
+| --- | --- |
+| Linux | `$XDG_DATA_HOME/ressik/credentials/instances/<config-hash>`, normally `~/.local/share/ressik/credentials/instances/<config-hash>` |
+| macOS | `~/Library/Application Support/ressik/credentials/instances/<config-hash>` |
+| Windows | `%LocalAppData%\ressik\credentials\instances\<config-hash>` |
+
+Google Drive will use the same store for its OAuth refresh token. Its eventual
+setup command will still need one interactive browser authorization; normal
+scheduled refreshes will not require an unlock prompt.
+
+Credential paths are not implicitly excluded from source scans. If a source
+contains Ressik's application-data tree, add an appropriate global ignore rule
+unless you want the protected credential file included as ordinary encrypted
+backup content.
+
 Future remote destinations will still be able to observe ciphertext sizes,
 upload timing, and reuse of an opaque block within one repository. Ressik does
 not claim traffic-analysis resistance.

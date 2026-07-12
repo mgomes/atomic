@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/zeebo/blake3"
 )
 
 const configEnvironment = "RESSIK_CONFIG"
@@ -42,6 +44,35 @@ func DefaultRepository() (string, error) {
 		return "", err
 	}
 	return filepath.Join(root, "ressik", "repository"), nil
+}
+
+// DefaultCredentialDir returns the owner-only credential directory for one
+// canonical configuration path.
+func DefaultCredentialDir(configPath string) (string, error) {
+	resolved, err := Path(configPath)
+	if err != nil {
+		return "", err
+	}
+	if physical, evalErr := filepath.EvalSymlinks(resolved); evalErr == nil {
+		resolved = physical
+	}
+	identity := filepath.Clean(resolved)
+	if runtime.GOOS == "windows" {
+		identity = strings.ToLower(identity)
+	}
+	digest := blake3.Sum256([]byte(identity))
+
+	root, err := dataRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(
+		root,
+		"ressik",
+		"credentials",
+		"instances",
+		fmt.Sprintf("%x", digest[:16]),
+	), nil
 }
 
 // DefaultStateDir returns the platform-local daemon state path.
