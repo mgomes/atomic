@@ -78,10 +78,10 @@ This decision supersedes ADR 0003's remote publication sequence and key layout
 for new remote-first snapshots. Those snapshots use a separate
 `ressik/v2/<repository-id>/...` destination namespace, distinct catalog,
 pack-index, destination-record, replication-waiver, retention-removal,
-control-checkpoint, and commit schemas, and distinct authenticated object
-kinds. Version 1 keeps its existing meaning and remains readable; a reader must
-never infer an object's schema from current configuration or reinterpret a
-version 1 manifest as a version 2 catalog.
+control-checkpoint, epoch-transition, and commit schemas, and distinct
+authenticated object kinds. Version 1 keeps its existing meaning and remains
+readable; a reader must never infer an object's schema from current
+configuration or reinterpret a version 1 manifest as a version 2 catalog.
 
 Version 2 deliberately reuses version 1 logical block IDs, block-key
 derivation, and sealed block frames. A version 2 standalone block contains one
@@ -176,13 +176,14 @@ operation. It publishes a replication-waiver record naming the snapshot and
 destination to every remaining complete destination before clearing that pin.
 Editing configuration or losing credentials never implies a waiver, and
 Ressik refuses to remove a destination while it is the last physically
-complete source for any snapshot with outstanding replication obligations. It
-also refuses to remove the final current control authority while another
-destination still owes an acknowledgement. Abandoning the data itself is a
-separate, explicitly destructive snapshot deletion rather than a waiver.
-Recovery applies only authenticated waiver and retention-removal records, so
-an unavailable destination pins data until it catches up, the user deliberately
-abandons delivery, or retention has removed the snapshot.
+complete source for any retained snapshot, regardless of whether replication
+is pending. An expired snapshot is exempt only after its authenticated removal
+record is durable. Ressik also refuses to remove the final current control
+authority while another destination still owes an acknowledgement. Abandoning
+the data itself is a separate, explicitly destructive snapshot deletion rather
+than a waiver. Recovery applies only authenticated waiver and retention-removal
+records, so an unavailable destination pins data until it catches up, the user
+deliberately abandons delivery, or retention has removed the snapshot.
 
 ## Control state
 
@@ -192,9 +193,10 @@ Each removal record repeats the snapshot ID, exact commit and catalog digests,
 and stable required-destination IDs from the commit, so its acknowledgement set
 remains reconstructable after the commit is deleted.
 Periodic authenticated checkpoints contain the cumulative effective records,
-a strictly increasing generation, and the previous checkpoint digest. Two
-different checkpoints at one generation, or a broken digest chain, are
-corruption.
+a random control-epoch ID, a generation that increases strictly within that
+epoch, and the previous checkpoint digest. Two different checkpoints at one
+epoch and generation, or a broken digest chain, are corruption. Generations are
+never compared across epochs.
 
 Control records are repository authority rather than rebuildable delivery
 state. Ressik pins each record, or a checkpoint containing it, until every
@@ -220,10 +222,12 @@ and performs no backup commit, replication, waiver, retention, compaction, or
 garbage collection.
 
 Declaring a missing control authority permanently lost is an explicit
-authenticated recovery operation that starts a new control epoch from the
-selected head and records the abandoned destination IDs. It requires a
-destructive warning. A destination later returning with an older or forked
-epoch is rejected until the user explicitly reconciles it.
+authenticated recovery operation. It publishes an immutable epoch-transition
+record binding a new random epoch ID to the selected predecessor epoch,
+generation, and checkpoint digest and to the abandoned destination IDs. The
+first checkpoint in the new epoch authenticates that transition. The operation
+requires a destructive warning. A destination later returning with an older or
+forked epoch is rejected until the user explicitly reconciles it.
 
 After applying control state, Ressik lists the remaining snapshot commits and
 pack indexes and authenticates their catalogs. The union of valid commits is
