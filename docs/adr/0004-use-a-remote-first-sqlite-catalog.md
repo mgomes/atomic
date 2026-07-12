@@ -138,17 +138,21 @@ operation. It publishes a replication-waiver record naming the snapshot and
 destination to every remaining complete destination before clearing that pin.
 Editing configuration or losing credentials never implies a waiver, and
 Ressik refuses to remove a destination while it is the last physically
-complete source for any snapshot with outstanding replication obligations;
-abandoning the data itself is a separate, explicitly destructive snapshot
-deletion rather than a waiver. Recovery applies only authenticated waiver
-and retention-removal records, so an unavailable destination pins data until
-it catches up, the user deliberately abandons delivery, or retention has
-removed the snapshot.
+complete source for any snapshot with outstanding replication obligations. It
+also refuses to remove the final current control authority while another
+destination still owes an acknowledgement. Abandoning the data itself is a
+separate, explicitly destructive snapshot deletion rather than a waiver.
+Recovery applies only authenticated waiver and retention-removal records, so
+an unavailable destination pins data until it catches up, the user deliberately
+abandons delivery, or retention has removed the snapshot.
 
 ## Control state
 
 Replication waivers and retention-removal records form an authenticated,
 monotonic repository control log. Every record is immutable and sealed once.
+Each removal record repeats the snapshot ID, exact commit and catalog digests,
+and stable required-destination IDs from the commit, so its acknowledgement set
+remains reconstructable after the commit is deleted.
 Periodic authenticated checkpoints contain the cumulative effective records,
 a strictly increasing generation, and the previous checkpoint digest. Two
 different checkpoints at one generation, or a broken digest chain, are
@@ -168,6 +172,20 @@ admitting destination commits into the repository union. A returning
 destination first receives and acknowledges current control state. Commits
 named by an effective retention-removal record are ignored and scheduled for
 ordered deletion even when their catalogs and payload remain valid.
+
+After local state is lost, a recovered control head is current only when every
+non-waived destination named by visible commits and control records either
+presents a mutually consistent head or acknowledges that head. While any such
+destination is unavailable, read-only restore may expose authenticated data as
+control-unreconciled, but Ressik admits no stale commit into the writable union
+and performs no backup commit, replication, waiver, retention, compaction, or
+garbage collection.
+
+Declaring a missing control authority permanently lost is an explicit
+authenticated recovery operation that starts a new control epoch from the
+selected head and records the abandoned destination IDs. It requires a
+destructive warning. A destination later returning with an older or forked
+epoch is rejected until the user explicitly reconciles it.
 
 After applying control state, Ressik lists the remaining snapshot commits and
 pack indexes and authenticates their catalogs. The union of valid commits is
@@ -261,7 +279,8 @@ destination that has already acknowledged and deleted it. A crash before any
 destination stores the record deletes nothing. A crash after storing it resumes
 removal. A crash after deleting the commit leaves unreachable catalog or
 payload for garbage collection. Losing every up-to-date control copy is loss of
-repository authority; remote rollback protection remains outside this format.
+repository authority; Ressik blocks mutation rather than guessing from stale
+commits until the explicit authority-recovery operation selects a new epoch.
 
 - An unreachable standalone block may be deleted.
 - A pack with no live members may have its index retired and then be deleted.
