@@ -540,9 +540,6 @@ to remain readable or to be drained through the compactor.
   designs, but both assume their own chunking, key schedules, and repository
   layouts, and Ressik would inherit format decisions without gaining their
   tooling.
-- Exact Arq-format compatibility would replace Ressik's BLAKE3 identifiers,
-  AES-GCM framing, and Merkle encoding while leaving multi-destination
-  reconciliation as custom work.
 
 ## Non-goals
 
@@ -560,7 +557,6 @@ to remain readable or to be drained through the compactor.
 - [Repository format version 1](../repository-format.md)
 - [SQLite Online Backup API](https://www.sqlite.org/backup.html)
 - [SQLite snapshot API](https://www.sqlite.org/c3ref/snapshot_get.html)
-- [Arq 7 data format](https://www.arqbackup.com/documentation/arq7/English.lproj/dataFormat.html)
 - [AWS deletion of versioned objects](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html)
 - [AWS incomplete multipart cleanup](https://docs.aws.amazon.com/AmazonS3/latest/userguide/abort-mpu.html)
 - [Amazon S3 consistency model](https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel)
