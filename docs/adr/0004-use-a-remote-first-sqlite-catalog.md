@@ -335,10 +335,13 @@ queryable, while logical-to-physical indirection allows pack compaction without
 rewriting snapshot metadata. A lost cache can be reconstructed from remote
 commits, catalogs, and pack indexes.
 
-The implementation now owes a portable SQLite integration, versioned schemas,
-consistent checkpoint creation, per-destination reconciliation, range reads,
-authenticated pack indexes, copy-on-write compaction, and failure-injection
-tests across every publication boundary. Cache rebuild may require listing and
+The implementation now owes a SQLite integration that preserves
+cross-compilation and behaves identically on every supported platform,
+versioned schemas, consistent checkpoint creation, per-destination
+reconciliation, range reads, authenticated pack indexes, copy-on-write
+compaction, and failure-injection tests across every publication boundary.
+The catalog also makes SQLite's stable, documented file format part of the
+repository format. Cache rebuild may require listing and
 opening many pack indexes. Compaction temporarily consumes additional remote
 bytes and transfer operations. Restoring one path still requires downloading
 that snapshot's catalog, and publishing a snapshot uploads a complete catalog
@@ -357,9 +360,11 @@ migrating repository stores version 1 and version 2 copies until the user
 removes the old one.
 
 Version 2 requires a new repository-format specification and an explicit
-version 1 migration command before it can replace the current engine. Version 1
-read support remains until migrated snapshots have been verified and
-deliberately removed.
+version 1 migration command before it can replace the current engine. Once
+written, that specification is normative and this record keeps the rationale.
+Version 1 read support remains until migrated snapshots have been verified
+and deliberately removed; ending version 1 read support product-wide is a
+separate later decision that this ADR does not schedule.
 
 Plans need at least one durable destination. A local filesystem may implement
 the destination contract, but Ressik will not create an implicit full local
@@ -385,6 +390,10 @@ to remain readable or to be drained through the compactor.
   Overwriting a pack in place would also make crashes destructive.
 - One remote object per logical block makes deletion simple, but performs poorly
   for repositories containing many small files.
+- Adopting restic's or kopia's pack and index conventions would reuse proven
+  designs, but both assume their own chunking, key schedules, and repository
+  layouts, and Ressik would inherit format decisions without gaining their
+  tooling.
 - Exact Arq-format compatibility would replace Ressik's BLAKE3 identifiers,
   AES-GCM framing, and Merkle encoding while leaving multi-destination
   reconciliation as custom work.
