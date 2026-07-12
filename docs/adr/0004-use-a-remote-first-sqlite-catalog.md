@@ -344,6 +344,18 @@ bytes and transfer operations. Restoring one path still requires downloading
 that snapshot's catalog, and publishing a snapshot uploads a complete catalog
 even when most file metadata is unchanged.
 
+Every run also pays a preflight walk over the included sources before its
+first payload write, which delays capture start on large or slow
+filesystems. Backpressure couples capture speed to destination throughput,
+so a first backup of a large source over a slow uplink holds its capture
+window open longer and is more exposed to source mutation before commit; an
+abandoned attempt leaves reusable uploaded blocks, so repeated runs converge
+instead of starting over. Catching up a lagging destination streams full
+history through the client and pays provider egress, independent compaction
+multiplies pack indexes and transfer work by destination count, and a
+migrating repository stores version 1 and version 2 copies until the user
+removes the old one.
+
 Version 2 requires a new repository-format specification and an explicit
 version 1 migration command before it can replace the current engine. Version 1
 read support remains until migrated snapshots have been verified and
