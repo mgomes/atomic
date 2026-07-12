@@ -1,6 +1,7 @@
 # ADR 0002: Use a minimal S3-compatible client
 
-Status: Accepted, amended by [ADR 0004](0004-use-a-remote-first-sqlite-catalog.md)
+Status: Accepted, amended by
+[ADR 0004](0004-use-a-remote-first-sqlite-catalog.md)
 
 Date: 2026-07-11
 

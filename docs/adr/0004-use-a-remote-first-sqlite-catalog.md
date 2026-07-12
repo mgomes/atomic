@@ -30,9 +30,9 @@ of 5% of the current run's preflight measurement of included regular file bytes;
 configuration may lower but not raise it. Five percent is small enough that
 no one provisions disk for a second copy and large enough to keep uploads
 streaming; a raisable ceiling would quietly regrow the local mirror this
-decision removes. Ressik will reserve budget before
-writing, apply backpressure, and leave a snapshot uncommitted rather than exceed
-the ceiling. Catalog and rebuildable control metadata are bounded separately
+decision removes. Ressik will reserve budget before writing, apply
+backpressure, and leave a snapshot uncommitted rather than exceed the ceiling.
+Catalog and rebuildable control metadata are bounded separately
 because a tree of empty files can contain more metadata than any percentage of
 its plaintext bytes.
 
@@ -75,9 +75,9 @@ This decision supersedes ADR 0003's remote publication sequence and key layout
 for new remote-first snapshots. Those snapshots use a separate
 `ressik/v2/<repository-id>/...` destination namespace, distinct catalog,
 pack-index, replication-waiver, retention-removal, and commit schemas, and
-distinct authenticated object kinds. Version 1 keeps its existing meaning and remains readable; a
-reader must never infer an object's schema from current configuration or
-reinterpret a version 1 manifest as a version 2 catalog.
+distinct authenticated object kinds. Version 1 keeps its existing meaning and
+remains readable; a reader must never infer an object's schema from current
+configuration or reinterpret a version 1 manifest as a version 2 catalog.
 
 Migration is copy-and-verify, not an in-place rewrite. Ressik authenticates a
 version 1 snapshot, writes its version 2 objects under the separate namespace,
@@ -125,8 +125,8 @@ catalogs. A destination's stable ID is a random value minted when the
 destination is attached and recorded at the destination as well as in
 configuration, so recovery on a new machine re-matches configured
 destinations to recorded obligations, and waivers accept historical IDs that
-no longer appear in configuration. A snapshot may be
-complete on one destination while another is pending. Once at least one
+no longer appear in configuration. A snapshot may be complete on one
+destination while another is pending. Once at least one
 physically complete destination can supply every required object, local staged
 payload may be released. Until every required destination is physically complete
 or has an authenticated waiver, the snapshot's commit, catalog, indexes, and
@@ -317,8 +317,9 @@ neither can complete safely.
 
 Catalog and rebuildable control metadata have a separate configured hard byte
 cap. Unlike the payload ceiling, this cap may be raised, because a larger
-source tree legitimately needs a larger active catalog. The working database, WAL and shared-memory files, SQLite backup output,
-encrypted catalog, atomic-write temporaries, delivery acknowledgements, and
+source tree legitimately needs a larger active catalog. The working database,
+WAL and shared-memory files, SQLite backup output, encrypted catalog,
+atomic-write temporaries, delivery acknowledgements, and
 physical-location rows all reserve and count against that allowance. Rows that
 grow with repository history are evictable and remotely rebuildable. Ressik
 evicts rebuildable history and falls back to remote queries and fuller scans
@@ -341,8 +342,8 @@ versioned schemas, consistent checkpoint creation, per-destination
 reconciliation, range reads, authenticated pack indexes, copy-on-write
 compaction, and failure-injection tests across every publication boundary.
 The catalog also makes SQLite's stable, documented file format part of the
-repository format. Cache rebuild may require listing and
-opening many pack indexes. Compaction temporarily consumes additional remote
+repository format. Cache rebuild may require listing and opening many pack
+indexes. Compaction temporarily consumes additional remote
 bytes and transfer operations. Restoring one path still requires downloading
 that snapshot's catalog, and publishing a snapshot uploads a complete catalog
 even when most file metadata is unchanged.
