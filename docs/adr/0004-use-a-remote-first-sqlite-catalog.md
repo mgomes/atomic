@@ -84,6 +84,15 @@ user explicitly removes the old copy. Existing sealed block frames may be
 copied into version 2 standalone objects or packs when their version 1 semantics
 remain unchanged.
 
+This decision also amends ADR 0002's deliberately small client surface.
+Version 2 restore requires ranged GetObject reads so single pack members can
+be fetched without downloading whole packs. Objects that exceed local
+staging or a provider's single-request size limit are sent with multipart
+uploads, which keep memory bounded while every part still signs its own
+SHA-256 payload; SigV4 streaming payloads and presigned URLs remain
+excluded. Recovery-scale listing composes the existing single-page
+ListObjectsV2 operation and needs no new client surface.
+
 ## Snapshot publication
 
 The backed-up SQLite catalog contains one snapshot's logical state. It excludes
