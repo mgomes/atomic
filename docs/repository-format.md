@@ -32,7 +32,10 @@ restorable.
 
 Each repository owns one random 256-bit master key. BLAKE3 derive-key mode
 creates independent block-ID and object-key bases using fixed, versioned
-contexts.
+contexts. A third context derives a stable 128-bit repository ID, encoded as
+32 lowercase hexadecimal characters. Copies opened with the same
+`repository.key` have the same repository ID; independently keyed repositories
+have unrelated IDs.
 
 A block ID is keyed BLAKE3 over the object kind, format version, plaintext
 length, and plaintext bytes. IDs are stable inside one repository for
@@ -63,6 +66,22 @@ root, and statistics needed to list snapshots. The whole record is encrypted
 and authenticated. Listing history therefore opens only small commit markers;
 loading or restoring a snapshot verifies the marker against the complete
 encrypted manifest.
+
+## Destination object keys
+
+Destinations store the exact authenticated local ciphertext without resealing
+it. Provider-independent keys use slash separators and this versioned layout:
+
+```text
+ressik/v1/<repository-id>/blocks/<first-two-id-characters>/<id>.block
+ressik/v1/<repository-id>/manifests/<id>.manifest
+ressik/v1/<repository-id>/commits/<id>.commit
+```
+
+Adapters may prepend a configured destination prefix. They must upload every
+referenced block before the manifest and publish the commit marker last. The
+repository ID isolates independently keyed repositories sharing a bucket, but
+it is an identifier rather than an authentication credential.
 
 ## Merkle encoding
 

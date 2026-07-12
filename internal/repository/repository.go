@@ -29,6 +29,7 @@ var ErrBusy = errors.New("repository is busy")
 // Repository is a local encrypted content-addressed repository.
 type Repository struct {
 	root  string
+	id    ID
 	codec *object.Codec
 	lock  *flock.Flock
 	gate  chan struct{}
@@ -204,6 +205,7 @@ func (r *Repository) Exclusive(ctx context.Context, work func() error) (result e
 }
 
 func openWithKey(root string, key []byte) (*Repository, error) {
+	id := deriveID(key)
 	codec, err := object.NewCodec(key)
 	for i := range key {
 		key[i] = 0
@@ -215,6 +217,7 @@ func openWithKey(root string, key []byte) (*Repository, error) {
 	gate <- struct{}{}
 	return &Repository{
 		root:  root,
+		id:    id,
 		codec: codec,
 		lock:  flock.New(filepath.Join(root, "repository.lock")),
 		gate:  gate,
