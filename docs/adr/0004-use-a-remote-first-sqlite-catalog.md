@@ -74,10 +74,11 @@ crashes, interrupted replication, cache repair, or partial destination failure.
 This decision supersedes ADR 0003's remote publication sequence and key layout
 for new remote-first snapshots. Those snapshots use a separate
 `ressik/v2/<repository-id>/...` destination namespace, distinct catalog,
-pack-index, replication-waiver, retention-removal, and commit schemas, and
-distinct authenticated object kinds. Version 1 keeps its existing meaning and
-remains readable; a reader must never infer an object's schema from current
-configuration or reinterpret a version 1 manifest as a version 2 catalog.
+pack-index, replication-waiver, retention-removal, control-checkpoint, and
+commit schemas, and distinct authenticated object kinds. Version 1 keeps its
+existing meaning and remains readable; a reader must never infer an object's
+schema from current configuration or reinterpret a version 1 manifest as a
+version 2 catalog.
 
 Migration is copy-and-verify, not an in-place rewrite. Ressik authenticates a
 version 1 snapshot, writes its version 2 objects under the separate namespace,
@@ -144,18 +145,42 @@ and retention-removal records, so an unavailable destination pins data until
 it catches up, the user deliberately abandons delivery, or retention has
 removed the snapshot.
 
-If local cache and delivery state are lost, Ressik lists snapshot commits and
-pack indexes at the configured destinations and authenticates their catalogs.
-The union of valid commits is reconstructed conservatively. The same snapshot
-ID with different catalog digests is corruption: snapshot IDs are unique per
-capture, a catalog is sealed exactly once and never resealed, and every
-destination receives byte-identical catalog ciphertext, re-fetched from a
-complete destination when local staging is gone. Physical locations are rebuilt
-and checked separately for each destination; the presence of an authenticated
-commit alone does not prove that destination is complete. Recovery and
-garbage collection treat listings as complete, so version 2 destinations
-must provide strongly consistent read-after-write and list-after-write
-visibility; an eventually consistent destination is unsupported.
+## Control state
+
+Replication waivers and retention-removal records form an authenticated,
+monotonic repository control log. Every record is immutable and sealed once.
+Periodic authenticated checkpoints contain the cumulative effective records,
+a strictly increasing generation, and the previous checkpoint digest. Two
+different checkpoints at one generation, or a broken digest chain, are
+corruption.
+
+Control records are repository authority rather than rebuildable delivery
+state. Ressik pins each record, or a checkpoint containing it, until every
+non-waived destination required by the affected snapshot acknowledges that
+control state. A record may be collected only after all such destinations
+acknowledge a checkpoint containing it. The current checkpoint remains pinned
+until a later cumulative checkpoint is acknowledged by the same set.
+Configuration edits and ordinary garbage collection never discard the final
+copy of current control state.
+
+Recovery reconciles authenticated checkpoints and later control records before
+admitting destination commits into the repository union. A returning
+destination first receives and acknowledges current control state. Commits
+named by an effective retention-removal record are ignored and scheduled for
+ordered deletion even when their catalogs and payload remain valid.
+
+After applying control state, Ressik lists the remaining snapshot commits and
+pack indexes and authenticates their catalogs. The union of valid commits is
+reconstructed conservatively. The same snapshot ID with different catalog
+digests is corruption: snapshot IDs are unique per capture, a catalog is sealed
+exactly once and never resealed, and every destination receives byte-identical
+catalog ciphertext, re-fetched from a complete destination when local staging
+is gone. Physical locations are rebuilt and checked separately for each
+destination; the presence of an authenticated commit alone does not prove that
+destination is complete. Recovery and garbage collection treat listings as
+complete, so version 2 destinations must provide strongly consistent
+read-after-write and list-after-write visibility; an eventually consistent
+destination is unsupported.
 
 A recovered destination becomes the only replication source, or authorizes
 deletion of another copy, only after every reachable logical block resolves on
@@ -214,20 +239,29 @@ period to standalone blocks, catalogs, indexes, and control records.
 
 ## Retention and compaction
 
-Before deleting anything, Ressik derives the retained root set from valid
-commits, authenticated replication waivers, the retention policy, and pending
-replication. A snapshot remains a replication root while any required
-destination is neither authenticated-waived nor verified physically complete;
-commit presence is necessary but not sufficient. At least one physically
-complete source remains pinned. Only a snapshot outside that root set is
-expired; Ressik then removes its commit marker before its catalog and marks
-logical blocks from the remaining roots. Before removing any commit marker,
-expiry publishes an authenticated retention-removal record naming the
-snapshot to every reachable required destination. Recovery treats that
-record as ending the snapshot's replication obligations, so an expiry
-interrupted between destinations resumes as a removal instead of
-resurrecting the snapshot as a replication root that would re-replicate
-already-deleted blocks.
+Ressik evaluates retention before pending replication. A retained snapshot with
+an incomplete, non-waived destination remains a replication root and pins at
+least one physically complete source. An expired snapshot does not remain a
+replication root merely because delivery is pending. Retention first publishes
+an authenticated removal record that ends every outstanding replication
+obligation for that snapshot.
+
+Before deleting any snapshot object at a destination, Ressik durably publishes
+the exact removal record there. Once the record exists on at least one durable
+configured destination, replication of the expired snapshot stops. Each
+reachable destination that acknowledges the record removes the snapshot commit
+first, then its catalog, and only then payload unreachable from retained
+commits. Offline destinations remain untouched until they return, reconcile
+control state, and perform the same ordered deletion.
+
+Removal completes only after every non-waived required destination acknowledges
+the record or a cumulative checkpoint containing it. Until then, that control
+state remains pinned even though snapshot payload need not remain at a
+destination that has already acknowledged and deleted it. A crash before any
+destination stores the record deletes nothing. A crash after storing it resumes
+removal. A crash after deleting the commit leaves unreachable catalog or
+payload for garbage collection. Losing every up-to-date control copy is loss of
+repository authority; remote rollback protection remains outside this format.
 
 - An unreachable standalone block may be deleted.
 - A pack with no live members may have its index retired and then be deleted.
