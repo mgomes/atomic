@@ -26,13 +26,14 @@ commits, snapshot catalogs, standalone objects, and pack indexes stored at the
 destinations.
 
 Local encrypted payload staging and cached object data will have a hard ceiling
-of 5% of the current run's preflight measurement of included regular file bytes;
-configuration may lower but not raise it. Five percent is small enough that
-no one provisions disk for a second copy and large enough to keep uploads
-streaming; a raisable ceiling would quietly regrow the local mirror this
-decision removes. Ressik will reserve budget before writing, apply
-backpressure, and leave a snapshot uncommitted rather than exceed the ceiling.
-Catalog and rebuildable control metadata are bounded separately
+of 5% of the operation's protected-byte measurement: the current preflight for
+backup and authenticated committed statistics for later snapshot operations.
+Operations without such a measurement use no disk payload cache, and
+configuration may lower but not raise the ceiling. Streaming and backpressure
+handle transfers larger than the disk budget; a raisable ceiling would quietly
+regrow the local mirror this decision removes. Ressik will reserve budget before
+writing and leave a snapshot uncommitted rather than exceed the ceiling. Catalog
+and rebuildable control metadata are bounded separately
 because a tree of empty files can contain more metadata than any percentage of
 its plaintext bytes.
 
@@ -144,11 +145,16 @@ destination is attached and recorded at the destination as well as in
 configuration, so recovery on a new machine re-matches configured
 destinations to recorded obligations, and waivers accept historical IDs that
 no longer appear in configuration. A snapshot may be complete on one
-destination while another is pending. Once at least one
-physically complete destination can supply every required object, local staged
-payload may be released. Until every required destination is physically complete
-or has an authenticated waiver, the snapshot's commit, catalog, indexes, and
-physical blocks remain pinned on at least one physically complete destination.
+destination while another is pending.
+
+Ressik releases an individual staged object as soon as one destination durably
+acknowledges the exact uploaded bytes. This object-level decision does not make
+the snapshot visible: a destination publishes the commit only after it can
+resolve and authenticate every referenced object. A local staged copy is not
+retained merely because another required destination lags. After the first
+snapshot commit, at least one physically complete destination remains pinned
+until every required destination is physically complete or has an authenticated
+waiver.
 
 Removing a required destination is an explicit authenticated repository
 operation. It publishes a replication-waiver record naming the snapshot and
@@ -305,10 +311,13 @@ work. Restore and verification never mutate a destination and may run
 anywhere; a concurrent writer's retention can only make an in-progress
 restore fail cleanly, never publish a partial tree.
 
-As defense in depth against imperfect deployments, garbage collection never
-deletes a destination object younger than a configured minimum age that
-exceeds the longest plausible publication. This generalizes the pack grace
-period to standalone blocks, catalogs, indexes, and control records.
+Garbage collection also applies a configured minimum object age as heuristic
+defense against accidental overlap and recently abandoned uploads. Age alone
+never makes an object deletable and need not exceed an unbounded publication.
+The exclusive writer lock, authenticated root analysis, replication pins, and
+physical-completeness checks are the correctness mechanisms. If age becomes a
+safety boundary later, the protocol must define a finite renewable publication
+lease and abort publication when that lease expires.
 
 ## Retention and compaction
 
@@ -412,29 +421,44 @@ cache files, counts crash leftovers before granting a new reservation, and
 deletes or validates them under the same lock. Direct upload with bounded memory
 is used when an object cannot fit in the remaining disk budget.
 
-Operations without a preflight measurement do not inherit a stale one.
-Restore, verification, and cache rebuild bound their downloaded ciphertext
-with fixed configured caches instead, so a machine that only restores never
-computes the payload ceiling.
+Payload accounting uses conservative allocated bytes rather than logical file
+length alone. Ressik rounds each dense payload file's planned temporary and
+final lengths up to the containing volume's allocation unit and counts all
+simultaneous copies. It does not create sparse or reflinked payload files. If the
+allocation unit cannot be determined safely, Ressik uses zero-disk payload
+streaming instead of guessing.
+
+The non-raisable payload-cache rule applies to every operation. Backup uses at
+most 5% of the current preflight measurement. Restore uses at most 5% of the
+selected snapshot's authenticated included-plaintext statistic. Verification
+and catch-up replication process snapshots serially under each snapshot's
+authenticated budget. Recovery, index rebuild, and standalone compaction have
+no single protected-byte total and therefore use zero-disk payload streaming
+through bounded memory. An optional absolute cache setting may lower these
+limits but cannot raise them or replace them with a stale measurement.
 
 When all destinations are unavailable, Ressik cannot both preserve an
 arbitrarily large unfinished snapshot and obey the ceiling. It stops before the
 next reservation and reports that destination delivery is blocking progress.
-Compaction uses the same reserved staging or direct-upload path and defers when
-neither can complete safely.
+Compaction performed during a backup may share that run's reserved budget;
+otherwise it streams without disk payload staging. It defers when neither path
+can complete safely.
 
-Catalog and rebuildable control metadata have a separate configured hard byte
-cap. Unlike the payload ceiling, this cap may be raised, because a larger
-source tree legitimately needs a larger active catalog. The working database,
-WAL and shared-memory files, SQLite backup output, encrypted catalog,
-atomic-write temporaries, delivery acknowledgements, and
-physical-location rows all reserve and count against that allowance. Rows that
-grow with repository history are evictable and remotely rebuildable. Ressik
-evicts rebuildable history and falls back to remote queries and fuller scans
-before failing clearly if the active snapshot catalog itself cannot fit.
-Metadata for empty or tiny files can exceed 5% of their content bytes, so total
-Ressik disk use can exceed 5% by this explicitly bounded allowance; the backup
-payload cache cannot.
+Catalog and rebuildable control state have a separate configured absolute byte
+cap. This allowance may be raised when an active source tree requires more
+metadata. The working database, WAL and shared-memory files, SQLite backup
+output, encrypted catalog, atomic-write temporaries, delivery acknowledgements,
+and physical-location rows reserve their worst-case simultaneous allocated
+sizes against it. Rebuildable history is evicted before the active snapshot
+fails.
+
+Ressik reports payload and metadata usage and limits separately. Directory
+entries and other filesystem bookkeeping are reported with the control
+allowance, but their platform-dependent cost prevents a portable promise that
+the volume's free-space delta exactly equals both limits. Metadata for empty or
+tiny files can exceed 5% of their content bytes, so total Ressik disk use can
+exceed 5% by the explicit metadata allowance; encrypted payload staging and
+cache cannot.
 
 ## Consequences
 
