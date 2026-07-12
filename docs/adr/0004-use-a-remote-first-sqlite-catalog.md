@@ -242,6 +242,12 @@ waits a fresh full grace period before deleting it. Losing the locally recorded
 discovery time restarts the grace period. The same conservative rule protects a
 new pack left by a crash before its index was published.
 
+A lost index and a completed retirement look identical in a listing, so
+deleting an indexless pack additionally requires that every live logical
+block resolve to a surviving authenticated location on that destination.
+While any live block is unresolvable, garbage collection halts with an
+integrity error and preserves indexless packs as repair material.
+
 Provider retention or object-lock policy may delay physical deletion. Ressik
 records deletion as pending and retries after the provider permits it.
 
