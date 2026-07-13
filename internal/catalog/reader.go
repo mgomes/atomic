@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -267,8 +268,12 @@ func (r *Reader) validateForeignKeys(ctx context.Context) error {
 }
 
 func (r *Reader) validateSchema(ctx context.Context) error {
+	want, err := expectedSchemaDefinitions()
+	if err != nil {
+		return err
+	}
 	rows, err := r.conn.QueryContext(ctx, `
-		SELECT type, name
+		SELECT type, name, sql
 		FROM sqlite_schema
 		WHERE name NOT LIKE 'sqlite_%'
 		ORDER BY type, name
@@ -278,30 +283,58 @@ func (r *Reader) validateSchema(ctx context.Context) error {
 	}
 	defer rows.Close()
 
-	want := []string{
-		"index:entries_by_parent",
-		"index:entry_blocks_by_id",
-		"table:blocks",
-		"table:entries",
-		"table:entry_blocks",
-		"table:snapshot",
-		"table:sources",
-	}
 	var got []string
 	for rows.Next() {
-		var kind, name string
-		if err := rows.Scan(&kind, &name); err != nil {
+		var kind, name, definition string
+		if err := rows.Scan(&kind, &name, &definition); err != nil {
 			return fmt.Errorf("scan catalog schema: %w", err)
 		}
-		got = append(got, kind+":"+name)
+		key := kind + ":" + name
+		expected, exists := want[key]
+		if !exists {
+			return fmt.Errorf("catalog contains unexpected schema object %q", key)
+		}
+		if normalizeSQL(definition) != expected {
+			return fmt.Errorf("catalog schema object %q does not match version %d", key, schemaVersion)
+		}
+		got = append(got, key)
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("iterate catalog schema: %w", err)
 	}
-	if !slices.Equal(got, want) {
-		return fmt.Errorf("catalog schema objects are %v, want %v", got, want)
+	wantKeys := make([]string, 0, len(want))
+	for key := range want {
+		wantKeys = append(wantKeys, key)
+	}
+	slices.Sort(wantKeys)
+	if !slices.Equal(got, wantKeys) {
+		return fmt.Errorf("catalog schema objects are %v, want %v", got, wantKeys)
 	}
 	return nil
+}
+
+func expectedSchemaDefinitions() (map[string]string, error) {
+	definitions := make(map[string]string)
+	for statement := range strings.SplitSeq(schemaSQL, ";") {
+		normalized := normalizeSQL(statement)
+		if normalized == "" {
+			continue
+		}
+		fields := strings.Fields(normalized)
+		if len(fields) < 3 || fields[0] != "CREATE" || (fields[1] != "TABLE" && fields[1] != "INDEX") {
+			return nil, fmt.Errorf("catalog schema contains an unsupported statement %q", normalized)
+		}
+		key := strings.ToLower(fields[1]) + ":" + fields[2]
+		if _, exists := definitions[key]; exists {
+			return nil, fmt.Errorf("catalog schema defines %q more than once", key)
+		}
+		definitions[key] = normalized
+	}
+	return definitions, nil
+}
+
+func normalizeSQL(statement string) string {
+	return strings.Join(strings.Fields(statement), " ")
 }
 
 func (r *Reader) validateRelationships(ctx context.Context) error {

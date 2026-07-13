@@ -297,6 +297,19 @@ func TestOpenRejectsSchemaWithoutParentForeignKey(t *testing.T) {
 	}
 }
 
+func TestOpenAcceptsCRLFSchema(t *testing.T) {
+	t.Parallel()
+	normalizedSchema := strings.ReplaceAll(schemaSQL, "\r\n", "\n")
+	image := encodeWithSchema(t, strings.ReplaceAll(normalizedSchema, "\n", "\r\n"), testSnapshot())
+	reader, err := Open(context.Background(), image, DefaultMaxBytes)
+	if err != nil {
+		t.Fatalf("Open() returned error: %v", err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("Close() returned error: %v", err)
+	}
+}
+
 func TestOpenRejectsDuplicateOrdinalsWithoutPrimaryKey(t *testing.T) {
 	t.Parallel()
 	normalizedSchema := strings.ReplaceAll(schemaSQL, "\r\n", "\n")
