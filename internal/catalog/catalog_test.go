@@ -285,8 +285,9 @@ func TestOpenRejectsSchemaWithoutParentForeignKey(t *testing.T) {
         DEFERRABLE INITIALLY DEFERRED,
 
 `
-	alteredSchema := strings.Replace(schemaSQL, parentForeignKey, "", 1)
-	if alteredSchema == schemaSQL {
+	normalizedSchema := strings.ReplaceAll(schemaSQL, "\r\n", "\n")
+	alteredSchema := strings.Replace(normalizedSchema, parentForeignKey, "", 1)
+	if alteredSchema == normalizedSchema {
 		t.Fatal("test did not remove the parent foreign key")
 	}
 	image := encodeWithSchema(t, alteredSchema, testSnapshot())
