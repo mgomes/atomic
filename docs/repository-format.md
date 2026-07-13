@@ -63,7 +63,7 @@ Every encrypted object starts with this authenticated clear header:
 
 ```text
 8 bytes   magic and format version: "RESSIK", 0x00, 0x01
-1 byte    object kind: block, manifest, or commit
+1 byte    object kind: block=1, manifest=2, commit=3, or pack index=4
 32 bytes  repository-scoped object ID
 8 bytes   big-endian plaintext length
 ```
@@ -75,6 +75,39 @@ root, and statistics needed to list snapshots. The whole record is encrypted
 and authenticated. Listing history therefore opens only small commit markers;
 loading or restoring a snapshot verifies the marker against the complete
 encrypted manifest.
+
+## Immutable pack encoding
+
+A pack is the bytewise concatenation of complete sealed block frames. Packs
+have no outer encryption layer, so a frame remains independently authenticated
+and can be copied verbatim during compaction. Writers initially target 4 MiB
+packs; the version 1 index format accepts packs up to 64 MiB so tuning the target
+does not require a format change. A frame that does not fit is stored in another
+pack or as a standalone block object.
+
+Each pack has a random 256-bit ID and an encrypted `pack index` object sealed
+with that ID. The index plaintext uses this canonical big-endian encoding:
+
+```text
+8 bytes   magic: "RESSIKPI"
+1 byte    index version: 1
+32 bytes  pack ID
+32 bytes  BLAKE3 digest of the complete pack
+8 bytes   pack length
+4 bytes   member count
+
+For each member, sorted strictly by block ID:
+32 bytes  repository-scoped block ID
+8 bytes   offset within the pack
+4 bytes   complete sealed-frame length
+```
+
+Member ranges must cover the pack exactly without gaps or overlaps. Readers
+reject duplicate or unsorted block IDs and invalid ranges. Ordinary range reads
+authenticate the encrypted index and the selected sealed block frame without
+downloading the full pack. Full-pack reads, verification, and compaction also
+reject a pack longer than 64 MiB or whose length or BLAKE3 digest differs from
+its authenticated index. A pack is published before its index.
 
 ## Destination object keys
 

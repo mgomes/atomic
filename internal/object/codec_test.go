@@ -83,6 +83,28 @@ func TestCodecRejectsWrongRepositoryKey(t *testing.T) {
 	}
 }
 
+func TestKindEncodingIsStable(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		kind object.Kind
+		want byte
+	}{
+		{name: "block", kind: object.Block, want: 1},
+		{name: "manifest", kind: object.Manifest, want: 2},
+		{name: "commit", kind: object.Commit, want: 3},
+		{name: "pack_index", kind: object.PackIndex, want: 4},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := byte(tt.kind); got != tt.want {
+				t.Errorf("byte(%s kind) = %d, want %d", tt.name, got, tt.want)
+			}
+		})
+	}
+}
+
 func newCodec(t *testing.T, value byte) *object.Codec {
 	t.Helper()
 	key := bytes.Repeat([]byte{value}, 32)
