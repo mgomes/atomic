@@ -2,33 +2,32 @@
 
 Status: Unreleased draft
 
-This document describes the currently implemented local repository prototype.
-[ADR 0004](adr/0004-use-a-remote-first-sqlite-catalog.md) supersedes its remote
-object set, layout, schemas, and publication sequence before the first release
-with SQLite catalogs, immutable packs, and repository state generations. The
-detailed specification must be updated before release, and repositories created
-by development builds are not a compatibility boundary.
+This document describes the evolving first repository format. Some development
+builds still publish JSON manifests, but the first supported format follows
+[ADR 0004](adr/0004-use-a-remote-first-sqlite-catalog.md) and uses SQLite
+catalogs, immutable packs, and repository state generations. Repositories
+created by development builds are not a compatibility boundary.
 
 ## Decision
 
-Ressik stores immutable, encrypted objects in a local content-addressed
-repository. A future destination copies only block, manifest, and commit
-objects. It must never copy `repository.key`, daemon state, or lock files.
+Ressik stores immutable, encrypted objects in a content-addressed repository.
+Destinations copy only repository objects. They must never copy
+`repository.key`, daemon state, local catalog working files, or lock files.
 
 The version-one write sequence is:
 
 1. Split regular files into fixed 4 MiB blocks.
 2. Store every referenced encrypted block.
-3. Store the encrypted snapshot manifest.
+3. Store the encrypted snapshot catalog.
 4. Store the authenticated commit marker last.
 
 A snapshot is visible only when its commit marker exists and authenticates the
-exact encrypted manifest. On POSIX filesystems, a crash before the last step can
+exact encrypted catalog. On POSIX filesystems, a crash before the last step can
 leave unreachable objects but cannot durably publish a partial snapshot.
-Garbage collection marks blocks from every committed manifest before removing
-unreachable blocks, orphan manifests, and stale temporary objects. Ressik syncs
+Garbage collection marks blocks from every committed catalog before removing
+unreachable blocks, orphan catalogs, and stale temporary objects. Ressik syncs
 object files and their containing directories before publishing commit markers;
-deletion syncs the commit directory before removing the corresponding manifest.
+deletion syncs the commit directory before removing the corresponding catalog.
 
 Directory-entry flushing and rename ordering are enforced on POSIX systems.
 Windows flushes object contents before rename, but directory-entry flushing and
@@ -63,18 +62,53 @@ Every encrypted object starts with this authenticated clear header:
 
 ```text
 8 bytes   magic and format version: "RESSIK", 0x00, 0x01
-1 byte    object kind: block=1, manifest=2, commit=3, or pack index=4
+1 byte    object kind: block=1, catalog=2, commit=3, or pack index=4
 32 bytes  repository-scoped object ID
 8 bytes   big-endian plaintext length
 ```
 
 The header is followed by the GCM nonce, ciphertext, and authentication tag.
-Manifest and commit IDs are random. Commit plaintext contains the BLAKE3 digest
-of the encrypted manifest plus the plan ID, display name, creation time, Merkle
+Catalog and commit IDs are random. Commit plaintext contains the BLAKE3 digest
+of the encrypted catalog plus the plan ID, display name, creation time, Merkle
 root, and statistics needed to list snapshots. The whole record is encrypted
 and authenticated. Listing history therefore opens only small commit markers;
 loading or restoring a snapshot verifies the marker against the complete
-encrypted manifest.
+encrypted catalog.
+
+## Snapshot catalog
+
+Each snapshot catalog is a complete SQLite database materialized from a live
+connection with SQLite's Online Backup API. Copying a database file or ignoring
+its journal is not a valid catalog write. The completed database is bounded,
+encrypted as one catalog object, and immutable after publication.
+
+Catalogs set `application_id` to hexadecimal `0x5253494b` (`RSIK`) and
+`user_version` to 1. Readers reject other values, failed SQLite integrity or
+foreign-key checks, and missing or extra schema objects. Version 1 uses strict
+tables:
+
+- `snapshot` has exactly one row containing the snapshot and configuration IDs,
+  plan metadata, creation time, root digest, chunk size, and statistics.
+- `sources` contains each stable source ID, original path, and source root
+  digest.
+- `entries` contains portable source-relative paths, folded collision keys,
+  parent paths, kind, mode, modification time, size, digest, link metadata, and
+  the incremental change token.
+- `blocks` contains each repository-scoped logical block ID and its plaintext
+  length once.
+- `entry_blocks` maps a file to its block IDs by zero-based ordinal.
+
+Object IDs and Merkle digests are raw 32-byte BLOBs. Times are signed Unix
+seconds plus nanoseconds. Modes use the unsigned 32-bit `os.FileMode` bit
+pattern in a SQLite integer. Paths are UTF-8 text with binary collation and are
+never normalized by the database. Block reference order comes only from the
+stored ordinal; SQLite row order is never significant.
+
+The catalog contains logical block IDs, not standalone object keys, pack IDs,
+offsets, destination state, credentials, retry state, or mutable reference
+counts. Reachability is derived from `entry_blocks`. Physical locations remain
+rebuildable repository-state or local-cache data, so compaction can move an
+authenticated block frame without rewriting any catalog.
 
 ## Immutable pack encoding
 
@@ -116,12 +150,12 @@ it. Provider-independent keys use slash separators and this versioned layout:
 
 ```text
 ressik/v1/<repository-id>/blocks/<first-two-id-characters>/<id>.block
-ressik/v1/<repository-id>/manifests/<id>.manifest
+ressik/v1/<repository-id>/catalogs/<id>.catalog
 ressik/v1/<repository-id>/commits/<id>.commit
 ```
 
 Adapters may prepend a configured destination prefix. They must upload every
-referenced block before the manifest and publish the commit marker last. The
+referenced block before the catalog and publish the commit marker last. The
 repository ID isolates independently keyed repositories sharing a bucket, but
 it is an identifier rather than an authentication credential.
 
@@ -150,9 +184,9 @@ Application leaf payloads are length-delimited and ordered:
   source digest.
 
 Directory entries and source IDs are sorted bytewise before hashing. Each
-manifest and encrypted commit summary also carries a persistent configuration
+catalog and encrypted commit summary also carries a persistent configuration
 ID, which namespaces plan history and retention when repositories are shared.
-Absolute source paths exist only inside the encrypted manifest. A later scan
+Absolute source paths exist only inside the encrypted catalog. A later scan
 may reuse a regular file's digest and block references when its relative path,
 kind, size, mode, modification time, filesystem identity, and change time still
 match and every referenced block object exists. Changed files are read again.
@@ -160,22 +194,24 @@ This skips file-content reads. Except for globally ignored paths, Ressik still
 walks and stats the source tree. Full mode rereads and hashes every included
 regular file.
 
-## Manifests and restore safety
+## Catalogs and restore safety
 
-Manifests use a bounded, versioned JSON schema inside the encrypted object.
-Readers reject unknown fields, trailing data, duplicate source or entry paths,
-absolute paths, drive and UNC paths, backslashes, traversal, unknown entry
-kinds or symbolic-link target kinds, invalid block sizes, and file lengths
-inconsistent with block refs.
+Catalog writers reject duplicate source or entry paths, case-fold collisions,
+absolute paths, drive and UNC paths, backslashes, traversal, unknown entry kinds
+or symbolic-link target kinds, invalid block sizes, conflicting block lengths,
+missing directory parents, ordinal gaps, and file lengths inconsistent with
+block references. Readers validate SQLite structure and stored invariants before
+issuing selected-path queries and validate the complete logical snapshot when
+loading it in full.
 
 Restore joins only validated source-relative paths beneath the requested
-destination. It recomputes the complete manifest Merkle tree before writing.
+destination. It recomputes the complete catalog Merkle tree before writing.
 Each block is authenticated before use, and the reconstructed file Merkle root
 must match before an atomic no-replace rename publishes the file. The complete
 staging tree is also published with no-replace semantics, so a raced destination
 is never overwritten.
 
-The explicit verification pass authenticates every commit, manifest, and
+The explicit verification pass authenticates every commit, catalog, and
 unique block, then recomputes file, directory, source, and plan Merkle roots.
 The normal incremental pass performs only an object existence-and-size check
 for unchanged file references so it does not turn every backup into a scrub.
@@ -185,15 +221,15 @@ for unchanged file references so it does not turn every backup into a scrub.
 Retention considers committed snapshots only and runs after a newer snapshot
 commits. `keep_last` and `keep_for` have union semantics; either rule protects a
 snapshot, and the newest committed snapshot is always kept. Before deleting an
-older snapshot, Ressik reloads the protected new manifest, recomputes its Merkle
+older snapshot, Ressik reloads the protected new catalog, recomputes its Merkle
 tree, and authenticates every referenced block. Ressik removes a commit marker
-before its manifest, then performs mark-and-sweep garbage collection while
+before its catalog, then performs mark-and-sweep garbage collection while
 holding the cross-process repository writer lock.
 
 ## Threat boundary
 
 The repository format prevents a destination that lacks the master key from
-reading block contents or manifest metadata and from testing guessed plaintext
+reading block contents or catalog metadata and from testing guessed plaintext
 against unkeyed content hashes. It does not hide object sizes, operation timing,
 or equality of an opaque block reused inside one repository.
 
