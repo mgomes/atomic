@@ -31,11 +31,13 @@ type Kind byte
 
 const (
 	// Block contains one deduplicated plaintext block.
-	Block Kind = iota + 1
+	Block Kind = 1
 	// Manifest contains one encrypted snapshot manifest.
-	Manifest
+	Manifest Kind = 2
 	// Commit marks a manifest as a complete snapshot.
-	Commit
+	Commit Kind = 3
+	// PackIndex maps logical block IDs to sealed frames in one immutable pack.
+	PackIndex Kind = 4
 )
 
 // ID is an opaque, repository-scoped object identifier.
@@ -237,7 +239,7 @@ func makeHeader(kind Kind, id ID, length uint64) []byte {
 }
 
 func (k Kind) valid() bool {
-	return k >= Block && k <= Commit
+	return k >= Block && k <= PackIndex
 }
 
 func maxInt() int {
