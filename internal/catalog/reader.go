@@ -44,6 +44,9 @@ func Open(ctx context.Context, image []byte, maxBytes int64) (*Reader, error) {
 	if len(image) < 100 {
 		return nil, errors.New("catalog image is truncated")
 	}
+	if image[18] != 1 || image[19] != 1 {
+		return nil, fmt.Errorf("catalog has unsupported journal header %d/%d", image[18], image[19])
+	}
 
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

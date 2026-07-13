@@ -126,6 +126,18 @@ func TestEncodeSizeLimit(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsWALHeader(t *testing.T) {
+	t.Parallel()
+	image, err := Encode(context.Background(), testSnapshot(), DefaultMaxBytes)
+	if err != nil {
+		t.Fatalf("Encode() returned error: %v", err)
+	}
+	image[18], image[19] = 2, 2
+	if _, err := Open(context.Background(), image, DefaultMaxBytes); err == nil || !strings.Contains(err.Error(), "unsupported journal header 2/2") {
+		t.Fatalf("Open() error = %v, want unsupported WAL header", err)
+	}
+}
+
 func TestCancellationAndClose(t *testing.T) {
 	t.Parallel()
 	canceled, cancel := context.WithCancel(context.Background())
