@@ -297,6 +297,47 @@ func TestOpenRejectsSchemaWithoutParentForeignKey(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsDuplicateOrdinalsWithoutPrimaryKey(t *testing.T) {
+	t.Parallel()
+	normalizedSchema := strings.ReplaceAll(schemaSQL, "\r\n", "\n")
+	alteredSchema := strings.Replace(
+		normalizedSchema,
+		"    PRIMARY KEY (source_id, path, ordinal),\n",
+		"",
+		1,
+	)
+	const entryBlocksTail = `    FOREIGN KEY (block_id) REFERENCES blocks(block_id)
+) STRICT, WITHOUT ROWID;
+
+CREATE INDEX entry_blocks_by_id`
+	const alteredTail = `    FOREIGN KEY (block_id) REFERENCES blocks(block_id)
+) STRICT;
+
+CREATE INDEX entry_blocks_by_id`
+	alteredSchema = strings.Replace(alteredSchema, entryBlocksTail, alteredTail, 1)
+	if alteredSchema == normalizedSchema || strings.Contains(alteredSchema, "PRIMARY KEY (source_id, path, ordinal)") {
+		t.Fatal("test did not remove the entry-block primary key")
+	}
+	image := encodeWithSchema(t, alteredSchema, testSnapshot())
+	mutated := mutateImage(t, image, `
+		INSERT INTO entry_blocks (source_id, path, ordinal, block_id)
+		SELECT source_id, path, 1, block_id
+		FROM entry_blocks
+		WHERE source_id = 'docs' AND path = 'nested/story.txt' AND ordinal = 1;
+		INSERT INTO entry_blocks (source_id, path, ordinal, block_id)
+		SELECT source_id, path, 3, block_id
+		FROM entry_blocks
+		WHERE source_id = 'docs' AND path = 'nested/story.txt' AND ordinal = 0;
+		UPDATE entries
+		SET size = 14
+		WHERE source_id = 'docs' AND path = 'nested/story.txt';
+		UPDATE snapshot SET plaintext_bytes = 18;
+	`)
+	if _, err := Open(context.Background(), mutated, DefaultMaxBytes); err == nil {
+		t.Fatal("Open() accepted duplicate block ordinals without a declared primary key")
+	}
+}
+
 func TestBackupImageIncludesUncheckpointedWAL(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

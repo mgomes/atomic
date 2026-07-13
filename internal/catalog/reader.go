@@ -377,6 +377,7 @@ func (r *Reader) validateRelationships(ctx context.Context) error {
 					FROM entry_blocks
 					GROUP BY source_id, path
 					HAVING min(ordinal) <> 0 OR max(ordinal) <> count(*) - 1
+					    OR count(DISTINCT ordinal) <> count(*)
 				) HAVING count(*) <> 0
 			`,
 		},
