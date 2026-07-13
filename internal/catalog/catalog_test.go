@@ -382,6 +382,50 @@ func TestOpenRejectsEmptyMetadataWithoutChecks(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsOutOfRangeNanosecondsWithoutChecks(t *testing.T) {
+	t.Parallel()
+	normalizedSchema := strings.ReplaceAll(schemaSQL, "\r\n", "\n")
+	alteredSchema := strings.Replace(
+		normalizedSchema,
+		"created_at_nanoseconds BETWEEN 0 AND 999999999",
+		"1",
+		1,
+	)
+	alteredSchema = strings.Replace(
+		alteredSchema,
+		"modified_at_nanoseconds BETWEEN 0 AND 999999999",
+		"1",
+		1,
+	)
+	if alteredSchema == normalizedSchema {
+		t.Fatal("test did not weaken the timestamp checks")
+	}
+	image := encodeWithSchema(t, alteredSchema, testSnapshot())
+
+	tests := []struct {
+		name      string
+		statement string
+	}{
+		{
+			name:      "snapshot",
+			statement: "UPDATE snapshot SET created_at_nanoseconds = 1000000000",
+		},
+		{
+			name:      "entry",
+			statement: "UPDATE entries SET modified_at_nanoseconds = 1000000000 WHERE source_id = 'docs' AND path = 'empty.txt'",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			mutated := mutateImage(t, image, test.statement)
+			if _, err := Open(context.Background(), mutated, DefaultMaxBytes); err == nil {
+				t.Fatal("Open() accepted out-of-range nanoseconds without a schema check")
+			}
+		})
+	}
+}
+
 func TestBackupImageIncludesUncheckpointedWAL(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

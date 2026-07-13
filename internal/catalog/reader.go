@@ -555,6 +555,9 @@ func (r *Reader) validateStoredEntries(ctx context.Context) error {
 		if mode < 0 || mode > math.MaxUint32 {
 			return fmt.Errorf("catalog path %q has invalid mode %d", path, mode)
 		}
+		if modifiedNanoseconds < 0 || modifiedNanoseconds >= int64(time.Second) {
+			return fmt.Errorf("catalog path %q has invalid modification nanoseconds %d", path, modifiedNanoseconds)
+		}
 		if time.Unix(modifiedSeconds, modifiedNanoseconds).UTC().IsZero() {
 			return fmt.Errorf("catalog path %q has an empty modification time", path)
 		}
@@ -684,6 +687,9 @@ func (r *Reader) metadata(ctx context.Context) (Snapshot, error) {
 	}
 	if len(rawID) != len(snapshot.ID) || len(rawRoot) != len(snapshot.Root) {
 		return Snapshot{}, errors.New("catalog snapshot contains a malformed ID or digest")
+	}
+	if createdNanoseconds < 0 || createdNanoseconds >= int64(time.Second) {
+		return Snapshot{}, fmt.Errorf("catalog snapshot has invalid creation nanoseconds %d", createdNanoseconds)
 	}
 	copy(snapshot.ID[:], rawID)
 	copy(snapshot.Root[:], rawRoot)
