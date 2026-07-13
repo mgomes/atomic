@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,6 +278,24 @@ func TestFileAndSymlinkSourceRoots(t *testing.T) {
 	}
 }
 
+func TestOpenRejectsSchemaWithoutParentForeignKey(t *testing.T) {
+	t.Parallel()
+	const parentForeignKey = `    FOREIGN KEY (source_id, parent_path)
+        REFERENCES entries(source_id, path)
+        DEFERRABLE INITIALLY DEFERRED,
+
+`
+	alteredSchema := strings.Replace(schemaSQL, parentForeignKey, "", 1)
+	if alteredSchema == schemaSQL {
+		t.Fatal("test did not remove the parent foreign key")
+	}
+	image := encodeWithSchema(t, alteredSchema, testSnapshot())
+	mutated := mutateImage(t, image, "DELETE FROM entries WHERE source_id = 'docs' AND path = 'nested'")
+	if _, err := Open(context.Background(), mutated, DefaultMaxBytes); err == nil {
+		t.Fatal("Open() accepted a dangling parent without a declared foreign key")
+	}
+}
+
 func TestBackupImageIncludesUncheckpointedWAL(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -382,6 +401,40 @@ func mutateImage(t *testing.T, image []byte, statement string) []byte {
 		t.Fatalf("serialize mutated catalog: %v", err)
 	}
 	return mutated
+}
+
+func encodeWithSchema(t *testing.T, schema string, snapshot Snapshot) []byte {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() returned error: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	conn, err := db.Conn(context.Background())
+	if err != nil {
+		t.Fatalf("Conn() returned error: %v", err)
+	}
+	defer conn.Close()
+	setup := fmt.Sprintf(`
+		PRAGMA foreign_keys = ON;
+		PRAGMA application_id = %d;
+		PRAGMA user_version = %d;
+	`, applicationID, schemaVersion)
+	if _, err := conn.ExecContext(context.Background(), setup); err != nil {
+		t.Fatalf("configure catalog: %v", err)
+	}
+	if _, err := conn.ExecContext(context.Background(), schema); err != nil {
+		t.Fatalf("create altered schema: %v", err)
+	}
+	if err := insertSnapshot(context.Background(), conn, snapshot); err != nil {
+		t.Fatalf("insert snapshot: %v", err)
+	}
+	image, err := backupImage(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("backupImage() returned error: %v", err)
+	}
+	return image
 }
 
 func deserializeForTest(t *testing.T, image []byte) (*sql.DB, *sql.Conn) {

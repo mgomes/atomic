@@ -329,13 +329,23 @@ func (r *Reader) validateRelationships(ctx context.Context) error {
 			`,
 		},
 		{
+			name: "entry sources",
+			query: `
+				SELECT count(*)
+				FROM entries
+				LEFT JOIN sources USING (source_id)
+				WHERE sources.source_id IS NULL
+				HAVING count(*) <> 0
+			`,
+		},
+		{
 			name: "directory parents",
 			query: `
 				SELECT count(*)
 				FROM entries AS child
-				JOIN entries AS parent
+				LEFT JOIN entries AS parent
 				  ON parent.source_id = child.source_id AND parent.path = child.parent_path
-				WHERE child.path <> '.' AND parent.kind <> 'directory'
+				WHERE child.path <> '.' AND (parent.path IS NULL OR parent.kind <> 'directory')
 				HAVING count(*) <> 0
 			`,
 		},
@@ -344,8 +354,18 @@ func (r *Reader) validateRelationships(ctx context.Context) error {
 			query: `
 				SELECT count(*)
 				FROM entry_blocks
-				JOIN entries USING (source_id, path)
-				WHERE entries.kind <> 'file'
+				LEFT JOIN entries USING (source_id, path)
+				WHERE entries.path IS NULL OR entries.kind <> 'file'
+				HAVING count(*) <> 0
+			`,
+		},
+		{
+			name: "block references",
+			query: `
+				SELECT count(*)
+				FROM entry_blocks
+				LEFT JOIN blocks USING (block_id)
+				WHERE blocks.block_id IS NULL
 				HAVING count(*) <> 0
 			`,
 		},
