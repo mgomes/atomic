@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -24,6 +25,7 @@ const (
 	maxAttempts        = 10
 	maxObjectKeyBytes  = 1024
 	maxListResponse    = 4 << 20
+	maxRangeResponse   = 64 << 20
 	maxSuccessResponse = 64 << 10
 	maxContinuation    = 64 << 10
 	maxCredentialBytes = 64 << 10
@@ -240,6 +242,76 @@ func (c *Client) Get(ctx context.Context, key string, maxBytes int64) ([]byte, O
 	})
 	if err != nil {
 		return nil, Object{}, fmt.Errorf("get object %q: %w", key, err)
+	}
+	return data, object, nil
+}
+
+// GetRange downloads exactly length bytes starting at offset, up to 64 MiB. It
+// rejects providers that ignore the range or return a different interval.
+// Object.Size is the complete stored object size reported by Content-Range.
+func (c *Client) GetRange(ctx context.Context, key string, offset, length int64) ([]byte, Object, error) {
+	if err := validateObjectKey(key); err != nil {
+		return nil, Object{}, err
+	}
+	if offset < 0 {
+		return nil, Object{}, errors.New("range offset must not be negative")
+	}
+	if length < 1 || length > maxRangeResponse {
+		return nil, Object{}, fmt.Errorf("range length must be between 1 and %d bytes", maxRangeResponse)
+	}
+	if offset > math.MaxInt64-(length-1) {
+		return nil, Object{}, errors.New("range end exceeds the maximum signed offset")
+	}
+	end := offset + length - 1
+
+	var (
+		data   []byte
+		object Object
+	)
+	err := c.retry(ctx, func() (bool, error) {
+		request, err := c.newObjectRequest(ctx, http.MethodGet, key, nil, nil, emptyPayloadHash)
+		if err != nil {
+			return false, err
+		}
+		request.Header.Set("Accept-Encoding", "identity")
+		request.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", offset, end))
+		if err := c.sign(request, emptyPayloadHash, c.now()); err != nil {
+			return false, err
+		}
+
+		response, err := c.http.Do(request)
+		if err != nil {
+			return ctx.Err() == nil, err
+		}
+		if response.StatusCode != http.StatusPartialContent {
+			if response.StatusCode < 200 || response.StatusCode >= 300 {
+				apiErr := readAPIError(response, true)
+				return retryable(apiErr), apiErr
+			}
+			statusErr := fmt.Errorf("range response returned HTTP %d, want %d", response.StatusCode, http.StatusPartialContent)
+			return false, errors.Join(statusErr, response.Body.Close())
+		}
+
+		total, err := validateRangeResponse(response, offset, end, length)
+		if err != nil {
+			return true, errors.Join(err, response.Body.Close())
+		}
+		body, tooLarge, err := readAndClose(response.Body, length)
+		if err != nil {
+			return true, err
+		}
+		if tooLarge {
+			return true, fmt.Errorf("range response exceeds requested length %d", length)
+		}
+		if int64(len(body)) != length {
+			return true, fmt.Errorf("range response contains %d bytes, want %d", len(body), length)
+		}
+		data = body
+		object = Object{Key: key, Size: total, ETag: response.Header.Get("ETag")}
+		return false, nil
+	})
+	if err != nil {
+		return nil, Object{}, fmt.Errorf("get object %q range %d-%d: %w", key, offset, end, err)
 	}
 	return data, object, nil
 }
@@ -617,6 +689,71 @@ func readAndClose(body io.ReadCloser, limit int64) ([]byte, bool, error) {
 		return nil, true, nil
 	}
 	return data, false, nil
+}
+
+func validateRangeResponse(response *http.Response, wantStart, wantEnd, wantLength int64) (int64, error) {
+	values := response.Header.Values("Content-Range")
+	if len(values) != 1 {
+		return 0, fmt.Errorf("range response has %d Content-Range headers, want 1", len(values))
+	}
+	start, end, total, err := parseContentRange(values[0])
+	if err != nil {
+		return 0, err
+	}
+	if start != wantStart || end != wantEnd {
+		return 0, fmt.Errorf("range response covers bytes %d-%d, want %d-%d", start, end, wantStart, wantEnd)
+	}
+	if response.ContentLength >= 0 && response.ContentLength != wantLength {
+		return 0, fmt.Errorf("range response declares %d bytes, want %d", response.ContentLength, wantLength)
+	}
+	return total, nil
+}
+
+func parseContentRange(value string) (int64, int64, int64, error) {
+	const prefix = "bytes "
+	if !strings.HasPrefix(value, prefix) {
+		return 0, 0, 0, fmt.Errorf("range response Content-Range %q does not start with %q", value, prefix)
+	}
+	interval, totalText, ok := strings.Cut(strings.TrimPrefix(value, prefix), "/")
+	if !ok {
+		return 0, 0, 0, fmt.Errorf("range response Content-Range %q has no total size", value)
+	}
+	startText, endText, ok := strings.Cut(interval, "-")
+	if !ok {
+		return 0, 0, 0, fmt.Errorf("range response Content-Range %q has no interval end", value)
+	}
+	start, err := parseDecimal(startText)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("parse Content-Range start: %w", err)
+	}
+	end, err := parseDecimal(endText)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("parse Content-Range end: %w", err)
+	}
+	total, err := parseDecimal(totalText)
+	if err != nil {
+		return 0, 0, 0, fmt.Errorf("parse Content-Range total: %w", err)
+	}
+	if start > end || end >= total {
+		return 0, 0, 0, fmt.Errorf("range response Content-Range %q is inconsistent", value)
+	}
+	return start, end, total, nil
+}
+
+func parseDecimal(value string) (int64, error) {
+	if value == "" {
+		return 0, errors.New("value is empty")
+	}
+	for index := range len(value) {
+		if value[index] < '0' || value[index] > '9' {
+			return 0, fmt.Errorf("value %q is not decimal", value)
+		}
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse decimal value %q: %w", value, err)
+	}
+	return parsed, nil
 }
 
 type listResult struct {

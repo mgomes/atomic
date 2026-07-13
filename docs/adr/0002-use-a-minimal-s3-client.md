@@ -12,11 +12,13 @@ Signature Version 4 and only the object operations required by remote backup
 destinations. AWS S3, Cloudflare R2, and Backblaze B2 will share this client by
 supplying their endpoint and signing region.
 
-The supported surface is PutObject, GetObject, HeadObject, DeleteObject, and
-one page of ListObjectsV2. Requests use HTTPS, sign the SHA-256 payload, support
-temporary credential session tokens, and never follow redirects. The client
-supports path-style and virtual-hosted addressing but does not discover
-buckets or regions.
+The supported surface is PutObject, complete and single-range GetObject,
+HeadObject, DeleteObject, and one page of ListObjectsV2. Range responses must
+return the exact requested interval with HTTP 206 and a consistent
+Content-Range; Ressik never falls back to downloading the complete object.
+Requests use HTTPS, sign the SHA-256 payload, support temporary credential
+session tokens, and never follow redirects. The client supports path-style and
+virtual-hosted addressing but does not discover buckets or regions.
 
 Ressik will not implement Signature Version 2, SigV4 streaming payloads,
 multipart uploads, presigned URLs, bucket management, ACLs, tagging, or a

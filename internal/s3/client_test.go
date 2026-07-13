@@ -678,15 +678,19 @@ func TestProviderRequestShapes(t *testing.T) {
 			if got := requestURL.String(); got != test.wantURL {
 				t.Errorf("requestURL(%q, %s) = %q, want %q", key, test.name, got, test.wantURL)
 			}
-			request, err := client.newObjectRequest(context.Background(), http.MethodHead, key, nil, nil, emptyPayloadHash)
+			request, err := client.newObjectRequest(context.Background(), http.MethodGet, key, nil, nil, emptyPayloadHash)
 			if err != nil {
 				t.Fatalf("newObjectRequest(%q, %s) returned error: %v", key, test.name, err)
 			}
+			request.Header.Set("Range", "bytes=1-2")
 			if err := client.sign(request, emptyPayloadHash, time.Date(2026, time.July, 11, 12, 0, 0, 0, time.UTC)); err != nil {
 				t.Fatalf("sign(%q, %s) returned error: %v", key, test.name, err)
 			}
 			if wantScope := "/20260711/" + test.region + "/s3/aws4_request"; !strings.Contains(request.Header.Get("Authorization"), wantScope) {
 				t.Errorf("sign(%q, %s) Authorization = %q, want scope %q", key, test.name, request.Header.Get("Authorization"), wantScope)
+			}
+			if !strings.Contains(request.Header.Get("Authorization"), "SignedHeaders=host;range;") {
+				t.Errorf("sign(%q, %s) Authorization = %q, want signed Range header", key, test.name, request.Header.Get("Authorization"))
 			}
 		})
 	}
@@ -703,11 +707,13 @@ func TestWaitBeforeRetryHonorsCancellation(t *testing.T) {
 }
 
 type capturedRequest struct {
-	Method        string
-	RequestURI    string
-	Authorization string
-	SessionToken  string
-	Body          []byte
+	Method         string
+	RequestURI     string
+	Authorization  string
+	Range          string
+	AcceptEncoding string
+	SessionToken   string
+	Body           []byte
 }
 
 type memoryS3 struct {
@@ -740,11 +746,13 @@ func (s *memoryS3) ServeHTTP(writer http.ResponseWriter, request *http.Request) 
 
 	s.mu.Lock()
 	s.calls = append(s.calls, capturedRequest{
-		Method:        request.Method,
-		RequestURI:    request.RequestURI,
-		Authorization: request.Header.Get("Authorization"),
-		SessionToken:  request.Header.Get("X-Amz-Security-Token"),
-		Body:          bytes.Clone(body),
+		Method:         request.Method,
+		RequestURI:     request.RequestURI,
+		Authorization:  request.Header.Get("Authorization"),
+		Range:          request.Header.Get("Range"),
+		AcceptEncoding: request.Header.Get("Accept-Encoding"),
+		SessionToken:   request.Header.Get("X-Amz-Security-Token"),
+		Body:           bytes.Clone(body),
 	})
 	if request.Method == http.MethodPut && s.failPuts > 0 {
 		s.failPuts--
@@ -791,8 +799,30 @@ func (s *memoryS3) object(writer http.ResponseWriter, request *http.Request, key
 			writeFakeError(writer, http.StatusNotFound, "NoSuchKey", "key not found")
 			return
 		}
-		writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		writer.Header().Set("ETag", `"fake-etag"`)
+		if rangeHeader := request.Header.Get("Range"); rangeHeader != "" {
+			start, end, err := parseFakeRange(rangeHeader)
+			if err != nil {
+				writeFakeError(writer, http.StatusBadRequest, "InvalidArgument", "invalid range")
+				return
+			}
+			if start >= int64(len(data)) {
+				writer.Header().Set("Content-Range", fmt.Sprintf("bytes */%d", len(data)))
+				writeFakeError(writer, http.StatusRequestedRangeNotSatisfiable, "InvalidRange", "range not satisfiable")
+				return
+			}
+			if end >= int64(len(data)) {
+				end = int64(len(data)) - 1
+			}
+			partial := data[start : end+1]
+			writer.Header().Set("Accept-Ranges", "bytes")
+			writer.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(data)))
+			writer.Header().Set("Content-Length", strconv.Itoa(len(partial)))
+			writer.WriteHeader(http.StatusPartialContent)
+			_, _ = writer.Write(partial)
+			return
+		}
+		writer.Header().Set("Content-Length", strconv.Itoa(len(data)))
 		writer.WriteHeader(http.StatusOK)
 		_, _ = writer.Write(data)
 	case http.MethodDelete:
@@ -801,6 +831,29 @@ func (s *memoryS3) object(writer http.ResponseWriter, request *http.Request, key
 	default:
 		writeFakeError(writer, http.StatusMethodNotAllowed, "MethodNotAllowed", "method not allowed")
 	}
+}
+
+func parseFakeRange(value string) (int64, int64, error) {
+	interval := strings.TrimPrefix(value, "bytes=")
+	if interval == value {
+		return 0, 0, errors.New("missing bytes unit")
+	}
+	startText, endText, ok := strings.Cut(interval, "-")
+	if !ok {
+		return 0, 0, errors.New("missing range end")
+	}
+	start, err := strconv.ParseInt(startText, 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	end, err := strconv.ParseInt(endText, 10, 64)
+	if err != nil {
+		return 0, 0, err
+	}
+	if start < 0 || end < start {
+		return 0, 0, errors.New("invalid range bounds")
+	}
+	return start, end, nil
 }
 
 func (s *memoryS3) list(writer http.ResponseWriter, request *http.Request) {
