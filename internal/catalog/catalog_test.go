@@ -338,6 +338,50 @@ CREATE INDEX entry_blocks_by_id`
 	}
 }
 
+func TestOpenRejectsEmptyMetadataWithoutChecks(t *testing.T) {
+	t.Parallel()
+	normalizedSchema := strings.ReplaceAll(schemaSQL, "\r\n", "\n")
+	alteredSchema := strings.Replace(
+		normalizedSchema,
+		"change_token IS NOT NULL AND change_token <> ''",
+		"change_token IS NOT NULL",
+		1,
+	)
+	alteredSchema = strings.Replace(
+		alteredSchema,
+		"link_target IS NOT NULL AND link_target <> '' AND",
+		"link_target IS NOT NULL AND",
+		1,
+	)
+	if alteredSchema == normalizedSchema {
+		t.Fatal("test did not weaken the entry metadata checks")
+	}
+	image := encodeWithSchema(t, alteredSchema, testSnapshot())
+
+	tests := []struct {
+		name      string
+		statement string
+	}{
+		{
+			name:      "file_change_token",
+			statement: "UPDATE entries SET change_token = '' WHERE source_id = 'docs' AND path = 'empty.txt'",
+		},
+		{
+			name:      "symlink_target",
+			statement: "UPDATE entries SET link_target = '' WHERE source_id = 'docs' AND path = 'nested/link'",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			mutated := mutateImage(t, image, test.statement)
+			if _, err := Open(context.Background(), mutated, DefaultMaxBytes); err == nil {
+				t.Fatal("Open() accepted empty entry metadata without a schema check")
+			}
+		})
+	}
+}
+
 func TestBackupImageIncludesUncheckpointedWAL(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

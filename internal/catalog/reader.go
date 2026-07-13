@@ -573,11 +573,11 @@ func (r *Reader) validateStoredEntries(ctx context.Context) error {
 				return fmt.Errorf("catalog directory %q contains file data", path)
 			}
 		case FileEntry:
-			if !fileMode.IsRegular() || size < 0 || linkTarget.Valid || linkKind.Valid || !changeToken.Valid || !utf8.ValidString(changeToken.String) {
+			if !fileMode.IsRegular() || size < 0 || linkTarget.Valid || linkKind.Valid || !changeToken.Valid || changeToken.String == "" || !utf8.ValidString(changeToken.String) {
 				return fmt.Errorf("catalog file %q contains invalid metadata", path)
 			}
 		case SymlinkEntry:
-			if fileMode&os.ModeSymlink == 0 || size < 0 || !linkTarget.Valid || !utf8.ValidString(linkTarget.String) || !linkKind.Valid || changeToken.Valid {
+			if fileMode&os.ModeSymlink == 0 || size < 0 || !linkTarget.Valid || linkTarget.String == "" || !utf8.ValidString(linkTarget.String) || !linkKind.Valid || changeToken.Valid {
 				return fmt.Errorf("catalog symlink %q contains invalid metadata", path)
 			}
 			switch SymlinkTargetKind(linkKind.String) {
