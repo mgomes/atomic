@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 // SealIndex validates and encrypts an index with its pack ID.

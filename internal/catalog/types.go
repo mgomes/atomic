@@ -3,8 +3,8 @@ package catalog
 import (
 	"time"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/merkle"
 )
 
 // EntryKind identifies a filesystem entry stored in a snapshot.

@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/mgomes/ressik/internal/config"
+	"github.com/mgomes/atomic/internal/config"
 )
 
 func TestLoadResolvesRelativePaths(t *testing.T) {

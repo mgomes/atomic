@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 // Collect removes blocks that are unreachable from every committed snapshot.

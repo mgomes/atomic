@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/backup"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 func TestBackupCollectsNewBlocksAfterPrecommitFailure(t *testing.T) {

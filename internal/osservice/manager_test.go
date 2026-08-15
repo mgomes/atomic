@@ -30,9 +30,9 @@ func TestServiceDefinitionUsesAbsoluteManagedArguments(t *testing.T) {
 
 	options := Options{
 		Scope:      UserScope,
-		Executable: "/opt/ressik/bin/ressik",
-		ConfigPath: "/home/user/.config/ressik/config.yaml",
-		StateDir:   "/home/user/.local/state/ressik",
+		Executable: "/opt/atomic/bin/atomic",
+		ConfigPath: "/home/user/.config/atomic/config.yaml",
+		StateDir:   "/home/user/.local/state/atomic",
 	}
 	definition, err := serviceDefinition(options)
 	if err != nil {
@@ -47,6 +47,9 @@ func TestServiceDefinitionUsesAbsoluteManagedArguments(t *testing.T) {
 	}
 	if definition.WorkingDirectory != "" {
 		t.Errorf("serviceDefinition().WorkingDirectory = %q, want service-manager default", definition.WorkingDirectory)
+	}
+	if !strings.HasPrefix(definition.Name, "atomic-") {
+		t.Errorf("serviceDefinition().Name = %q, want Atomic namespace", definition.Name)
 	}
 	other := options
 	other.StateDir += "-other"
@@ -64,7 +67,7 @@ func TestServiceDefinitionRejectsRelativePaths(t *testing.T) {
 
 	options := Options{
 		Scope:      DefaultScope(),
-		Executable: "ressik",
+		Executable: "atomic",
 		ConfigPath: "/config.yaml",
 		StateDir:   "/state",
 	}
@@ -86,7 +89,7 @@ func TestServiceDefinitionRejectsSystemdSpecifierPaths(t *testing.T) {
 
 	options := Options{
 		Scope:      UserScope,
-		Executable: "/opt/ressik/bin/ressik",
+		Executable: "/opt/atomic/bin/atomic",
 		ConfigPath: "/home/user/config-%i.yaml",
 		StateDir:   "/home/user/state",
 	}
@@ -100,13 +103,13 @@ func TestServiceDefinitionRejectsUnsupportedScope(t *testing.T) {
 
 	options := Options{
 		Scope:      SystemScope,
-		Executable: "/opt/ressik",
+		Executable: "/opt/atomic",
 		ConfigPath: "/config.yaml",
 		StateDir:   "/state",
 	}
 	if runtime.GOOS == "windows" {
 		options.Scope = UserScope
-		options.Executable = `C:\ressik.exe`
+		options.Executable = `C:\atomic.exe`
 		options.ConfigPath = `C:\config.yaml`
 		options.StateDir = `C:\state`
 	}

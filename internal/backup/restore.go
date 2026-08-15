@@ -9,10 +9,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/pathcheck"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/pathcheck"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/merkle"
 )
 
 // RestoreOptions controls how a snapshot is materialized.
@@ -57,9 +57,9 @@ func (e *Engine) Restore(ctx context.Context, id object.ID, options RestoreOptio
 			return fmt.Errorf("compare restore destination with repository: %w", err)
 		}
 		if insideRepository {
-			return errors.New("restore destination physically overlaps the Ressik repository")
+			return errors.New("restore destination physically overlaps the Atomic repository")
 		}
-		staging, err := os.MkdirTemp(parent, ".ressik-restore-*")
+		staging, err := os.MkdirTemp(parent, ".atomic-restore-*")
 		if err != nil {
 			return fmt.Errorf("create restore staging directory: %w", err)
 		}
@@ -71,7 +71,7 @@ func (e *Engine) Restore(ctx context.Context, id object.ID, options RestoreOptio
 				workErr = errors.Join(workErr, fmt.Errorf("clean restore staging directory: %w", err))
 			}
 		}()
-		workDir := filepath.Join(staging, ".ressik-work")
+		workDir := filepath.Join(staging, ".atomic-work")
 		if err := os.Mkdir(workDir, 0o700); err != nil {
 			return fmt.Errorf("create restore work directory: %w", err)
 		}

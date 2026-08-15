@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mgomes/ressik/internal/application"
-	"github.com/mgomes/ressik/internal/daemon"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/internal/schedule"
+	"github.com/mgomes/atomic/internal/application"
+	"github.com/mgomes/atomic/internal/daemon"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/internal/schedule"
 )
 
 // Dashboard is a point-in-time view of configured plans and backup history.

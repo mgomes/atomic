@@ -10,7 +10,7 @@ created by development builds are not a compatibility boundary.
 
 ## Decision
 
-Ressik stores immutable, encrypted objects in a content-addressed repository.
+Atomic stores immutable, encrypted objects in a content-addressed repository.
 Destinations copy only repository objects. They must never copy
 `repository.key`, daemon state, local catalog working files, or lock files.
 
@@ -25,7 +25,7 @@ A snapshot is visible only when its commit marker exists and authenticates the
 exact encrypted catalog. On POSIX filesystems, a crash before the last step can
 leave unreachable objects but cannot durably publish a partial snapshot.
 Garbage collection marks blocks from every committed catalog before removing
-unreachable blocks, orphan catalogs, and stale temporary objects. Ressik syncs
+unreachable blocks, orphan catalogs, and stale temporary objects. Atomic syncs
 object files and their containing directories before publishing commit markers;
 deletion syncs the commit directory before removing the corresponding catalog.
 
@@ -33,7 +33,7 @@ Directory-entry flushing and rename ordering are enforced on POSIX systems.
 Windows flushes object contents before rename, but directory-entry flushing and
 power-loss ordering are best effort because the platform does not expose the
 same portable directory `fsync` primitive. After an interrupted Windows write,
-Ressik reports an inconsistent committed snapshot instead of treating it as
+Atomic reports an inconsistent committed snapshot instead of treating it as
 restorable.
 
 ## Keys and object identifiers
@@ -53,7 +53,7 @@ content.
 Each object's AES key is keyed BLAKE3 over its kind, version, and object ID.
 Objects use AES-256-GCM with a random 96-bit nonce prepended by Go's
 `cipher.NewGCMWithRandomNonce`. The clear header is authenticated as associated
-data. On block reads, Ressik decrypts the bytes and recomputes the keyed block
+data. On block reads, Atomic decrypts the bytes and recomputes the keyed block
 ID.
 
 ## Object framing
@@ -61,7 +61,7 @@ ID.
 Every encrypted object starts with this authenticated clear header:
 
 ```text
-8 bytes   magic and format version: "RESSIK", 0x00, 0x01
+8 bytes   magic and format version: "ATOMIC", 0x00, 0x01
 1 byte    object kind: block=1, catalog=2, commit=3, or pack index=4
 32 bytes  repository-scoped object ID
 8 bytes   big-endian plaintext length
@@ -123,7 +123,7 @@ Each pack has a random 256-bit ID and an encrypted `pack index` object sealed
 with that ID. The index plaintext uses this canonical big-endian encoding:
 
 ```text
-8 bytes   magic: "RESSIKPI"
+8 bytes   magic: "ATOMICPI"
 1 byte    index version: 1
 32 bytes  pack ID
 32 bytes  BLAKE3 digest of the complete pack
@@ -149,9 +149,9 @@ Destinations store the exact authenticated local ciphertext without resealing
 it. Provider-independent keys use slash separators and this versioned layout:
 
 ```text
-ressik/v1/<repository-id>/blocks/<first-two-id-characters>/<id>.block
-ressik/v1/<repository-id>/catalogs/<id>.catalog
-ressik/v1/<repository-id>/commits/<id>.commit
+atomic/v1/<repository-id>/blocks/<first-two-id-characters>/<id>.block
+atomic/v1/<repository-id>/catalogs/<id>.catalog
+atomic/v1/<repository-id>/commits/<id>.commit
 ```
 
 Adapters may prepend a configured destination prefix. They must upload every
@@ -162,7 +162,7 @@ it is an identifier rather than an authentication credential.
 ## Merkle encoding
 
 The standalone `merkle` package uses the domain prefix
-`ressik-merkle-v1\x00` and BLAKE3:
+`atomic-merkle-v1\x00` and BLAKE3:
 
 ```text
 empty  = H(domain || 0x00)
@@ -190,7 +190,7 @@ Absolute source paths exist only inside the encrypted catalog. A later scan
 may reuse a regular file's digest and block references when its relative path,
 kind, size, mode, modification time, filesystem identity, and change time still
 match and every referenced block object exists. Changed files are read again.
-This skips file-content reads. Except for globally ignored paths, Ressik still
+This skips file-content reads. Except for globally ignored paths, Atomic still
 walks and stats the source tree. Full mode rereads and hashes every included
 regular file.
 
@@ -221,8 +221,8 @@ for unchanged file references so it does not turn every backup into a scrub.
 Retention considers committed snapshots only and runs after a newer snapshot
 commits. `keep_last` and `keep_for` have union semantics; either rule protects a
 snapshot, and the newest committed snapshot is always kept. Before deleting an
-older snapshot, Ressik reloads the protected new catalog, recomputes its Merkle
-tree, and authenticates every referenced block. Ressik removes a commit marker
+older snapshot, Atomic reloads the protected new catalog, recomputes its Merkle
+tree, and authenticates every referenced block. Atomic removes a commit marker
 before its catalog, then performs mark-and-sweep garbage collection while
 holding the cross-process repository writer lock.
 

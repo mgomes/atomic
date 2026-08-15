@@ -9,7 +9,7 @@ test:
     go test ./...
 
 test-full:
-    RESSIK_FULL_TESTS=1 go test -count=1 -timeout=20m ./internal/backup
+    ATOMIC_FULL_TESTS=1 go test -count=1 -timeout=20m ./internal/backup
 
 race:
     go test -race ./...
@@ -20,13 +20,13 @@ check:
 
 build:
     mkdir -p build
-    go build -trimpath -o build/ressik ./cmd/ressik
+    go build -trimpath -o build/atomic ./cmd/atomic
 
 cross:
     mkdir -p build/cross
-    GOOS=darwin GOARCH=arm64 go build -trimpath -o build/cross/ressik-darwin-arm64 ./cmd/ressik
-    GOOS=linux GOARCH=amd64 go build -trimpath -o build/cross/ressik-linux-amd64 ./cmd/ressik
-    GOOS=windows GOARCH=amd64 go build -trimpath -o build/cross/ressik-windows-amd64.exe ./cmd/ressik
+    GOOS=darwin GOARCH=arm64 go build -trimpath -o build/cross/atomic-darwin-arm64 ./cmd/atomic
+    GOOS=linux GOARCH=amd64 go build -trimpath -o build/cross/atomic-linux-amd64 ./cmd/atomic
+    GOOS=windows GOARCH=amd64 go build -trimpath -o build/cross/atomic-windows-amd64.exe ./cmd/atomic
 
 run *args:
-    go run ./cmd/ressik -- {{args}}
+    go run ./cmd/atomic -- {{args}}

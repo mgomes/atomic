@@ -1,2 +1,2 @@
-// Package config loads and validates Ressik's YAML configuration.
+// Package config loads and validates Atomic's YAML configuration.
 package config

@@ -6,18 +6,18 @@ Date: 2026-07-11
 
 ## Decision
 
-Ressik will use per-user protected files as the primary store for destination
+Atomic will use per-user protected files as the primary store for destination
 credentials rather than embedding them in `config.yaml`, repository metadata,
 or daemon state. Each configuration path gets a separate credential directory,
 and each credential ID names one opaque, provider-owned file within it.
 
-On POSIX systems, Ressik requires the directory to be owned by the effective
+On POSIX systems, Atomic requires the directory to be owned by the effective
 user with exact mode `0700`. Credential files must be regular files owned by
-that user with exact mode `0600` and at most one live hard link. Ressik rejects
+that user with exact mode `0600` and at most one live hard link. Atomic rejects
 symbolic links and insecure existing paths before reading bytes. It does not
 silently tighten an existing path because that cannot undo an earlier exposure.
 
-Windows does not implement POSIX modes as an access-control boundary. Ressik
+Windows does not implement POSIX modes as an access-control boundary. Atomic
 therefore creates the directory and files with a protected DACL at creation
 time. The current user must own the object and be the only trustee, with full
 control. Reparse points and additional access rules are rejected. Filesystems
@@ -35,7 +35,7 @@ expiration as a reauthorization-required error.
 
 ## Context
 
-Ressik is designed to run unattended after login or reboot. A credential vault
+Atomic is designed to run unattended after login or reboot. A credential vault
 that requires a manual unlock can silently prevent scheduled backups until a
 user notices. Putting credentials directly in YAML makes them too easy to copy,
 log, or commit and gives unrelated configuration tooling access to secrets.
@@ -54,7 +54,7 @@ The files protect against other local accounts, accidental disclosure, and
 overly broad inherited permissions. They do not protect against the owning
 account, an administrator or root compromise, malware running as that user, or
 an attacker who can read process memory. Credential files need an intentional
-recovery plan. If a configured source contains Ressik's application-data tree,
+recovery plan. If a configured source contains Atomic's application-data tree,
 the credential files are ordinary source files and will be included in the
 encrypted snapshot unless a global ignore rule excludes them.
 

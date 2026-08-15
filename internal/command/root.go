@@ -15,20 +15,20 @@ import (
 	cli "github.com/urfave/cli/v3"
 	"github.com/zeebo/blake3"
 
-	"github.com/mgomes/ressik/internal/application"
-	"github.com/mgomes/ressik/internal/backup"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/daemon"
-	"github.com/mgomes/ressik/internal/osservice"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/internal/tui"
+	"github.com/mgomes/atomic/internal/application"
+	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/daemon"
+	"github.com/mgomes/atomic/internal/osservice"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/internal/tui"
 )
 
-// New returns the complete Ressik CLI.
+// New returns the complete Atomic CLI.
 func New(version string, stdout, stderr io.Writer) *cli.Command {
 	var configPath string
 	root := &cli.Command{
-		Name:      "ressik",
+		Name:      "atomic",
 		Usage:     "encrypted, deduplicated backups",
 		Version:   version,
 		Writer:    stdout,
@@ -509,14 +509,14 @@ func serviceManager(paths paths, scope osservice.Scope) (*osservice.Manager, err
 func executablePath() (string, error) {
 	path, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("find Ressik executable: %w", err)
+		return "", fmt.Errorf("find Atomic executable: %w", err)
 	}
 	return filepath.Abs(path)
 }
 
 func validateServiceScope(scope osservice.Scope) error {
 	if scope != osservice.UserScope {
-		return errors.New("Ressik supports only per-user service scope")
+		return errors.New("Atomic supports only per-user service scope")
 	}
 	return nil
 }

@@ -9,10 +9,10 @@ import (
 
 	"github.com/zeebo/blake3"
 
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/object"
 )
 
-const repositoryIDContext = "github.com/mgomes/ressik 2026-07-11 repository ids v1"
+const repositoryIDContext = "github.com/mgomes/atomic 2026-07-11 repository ids v1"
 
 // ID is a stable, opaque repository identity derived from repository.key.
 // Repository copies opened with the same key have the same ID.
@@ -44,7 +44,7 @@ func (r *Repository) ObjectKey(ref ObjectRef) (string, error) {
 		return "", err
 	}
 	name := ref.ID.String()
-	parts := []string{"ressik", "v1", r.id.String(), directory}
+	parts := []string{"atomic", "v1", r.id.String(), directory}
 	if ref.Kind == object.Block {
 		parts = append(parts, name[:2])
 	}

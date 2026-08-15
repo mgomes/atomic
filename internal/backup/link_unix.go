@@ -5,7 +5,7 @@ package backup
 import (
 	"os"
 
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 func restoreSymlink(path, target string, _ repository.SymlinkTargetKind) error {

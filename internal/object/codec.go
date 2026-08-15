@@ -19,11 +19,11 @@ const (
 	keySize             = 32
 )
 
-var magic = [8]byte{'R', 'E', 'S', 'S', 'I', 'K', 0, 1}
+var magic = [8]byte{'A', 'T', 'O', 'M', 'I', 'C', 0, 1}
 
 const (
-	blockIDContext   = "github.com/mgomes/ressik 2026-07-10 repository block ids v1"
-	objectKeyContext = "github.com/mgomes/ressik 2026-07-10 repository object keys v1"
+	blockIDContext   = "github.com/mgomes/atomic 2026-07-10 repository block ids v1"
+	objectKeyContext = "github.com/mgomes/atomic 2026-07-10 repository object keys v1"
 )
 
 // Kind identifies a repository object type.

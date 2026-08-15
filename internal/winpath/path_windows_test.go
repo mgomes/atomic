@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/winpath"
+	"github.com/mgomes/atomic/internal/winpath"
 )
 
 func TestExtendedHandlesLongLocalAndUNCPaths(t *testing.T) {

@@ -13,10 +13,10 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/ignore"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/ignore"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 type fullCorpus struct {

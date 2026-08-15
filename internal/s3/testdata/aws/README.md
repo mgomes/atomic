@@ -8,5 +8,5 @@ https://docs.aws.amazon.com/AmazonS3/latest/developerguide/sig-v4-header-based-a
 
 AWS explicitly publishes these values as a test suite for custom SigV4
 implementations. The list fixture intentionally reverses the raw query order to
-prove Ressik canonicalizes it before signing; the expected signature is
+prove Atomic canonicalizes it before signing; the expected signature is
 unchanged.

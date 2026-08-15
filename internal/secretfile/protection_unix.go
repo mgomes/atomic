@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mgomes/ressik/internal/fsdurable"
+	"github.com/mgomes/atomic/internal/fsdurable"
 )
 
 const (

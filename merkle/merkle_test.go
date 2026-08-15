@@ -3,7 +3,7 @@ package merkle_test
 import (
 	"testing"
 
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/merkle"
 )
 
 func TestBuilderMatchesBatchRoot(t *testing.T) {
@@ -42,11 +42,11 @@ func TestRootGoldenVectors(t *testing.T) {
 		leaves []merkle.Digest
 		want   string
 	}{
-		{name: "empty", want: "bb378523696b698e06389e95e828f51ea456dbd299836ad7a04bddea4b04a941"},
+		{name: "empty", want: "5febe233b87c1478e0acc84747e836c793789110538672c01238ec23e962e0be"},
 		{
 			name:   "one",
 			leaves: []merkle.Digest{merkle.Leaf([]byte("one"))},
-			want:   "7bcdd8367e2f95f165e701ff4f060a31fb781f407b165392ff00ec9d826baaab",
+			want:   "2cb3f6c1de697137356470dcf780a5d6b54912c1938a20fc370b33b1447589ab",
 		},
 		{
 			name: "three",
@@ -55,7 +55,7 @@ func TestRootGoldenVectors(t *testing.T) {
 				merkle.Leaf([]byte("two")),
 				merkle.Leaf([]byte("three")),
 			},
-			want: "d5348ec57bb5b0e2dca908cee197314a1ee3e8d5eb93e5de8e340b2131e1fafa",
+			want: "797d60af0d6a12b8bbd5459f50def668666fb284abb84622a3fb7a95426fb08b",
 		},
 	}
 

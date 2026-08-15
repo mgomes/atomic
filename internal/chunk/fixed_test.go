@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/mgomes/ressik/internal/chunk"
+	"github.com/mgomes/atomic/internal/chunk"
 )
 
 func TestFixedSplit(t *testing.T) {

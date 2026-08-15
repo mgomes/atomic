@@ -9,9 +9,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/fsname"
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/fsname"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 // Version is the logical schema version stored in every catalog snapshot.

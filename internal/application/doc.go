@@ -1,2 +1,2 @@
-// Package application exposes Ressik operations to the CLI, daemon, and TUI.
+// Package application exposes Atomic operations to the CLI, daemon, and TUI.
 package application

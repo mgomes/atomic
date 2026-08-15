@@ -10,16 +10,16 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/ignore"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/ignore"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 func TestFullLifecycle(t *testing.T) {
-	if os.Getenv("RESSIK_FULL_TESTS") != "1" {
-		t.Skip("set RESSIK_FULL_TESTS=1 to run the full lifecycle test")
+	if os.Getenv("ATOMIC_FULL_TESTS") != "1" {
+		t.Skip("set ATOMIC_FULL_TESTS=1 to run the full lifecycle test")
 	}
 
 	ctx := context.Background()

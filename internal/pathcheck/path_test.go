@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/pathcheck"
+	"github.com/mgomes/atomic/internal/pathcheck"
 )
 
 func TestOverlapFollowsDirectoryAliases(t *testing.T) {

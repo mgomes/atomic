@@ -14,5 +14,5 @@ func backgroundName(stateDir string) string {
 		identity = strings.ToLower(identity)
 	}
 	digest := sha256.Sum256([]byte(identity))
-	return fmt.Sprintf("ressik-%x", digest[:8])
+	return fmt.Sprintf("atomic-%x", digest[:8])
 }

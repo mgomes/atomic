@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 func TestCodecRoundTrip(t *testing.T) {
@@ -26,6 +26,25 @@ func TestCodecRoundTrip(t *testing.T) {
 	}
 	if !bytes.Equal(got, plaintext) {
 		t.Errorf("Codec.Open() = %q, want %q", got, plaintext)
+	}
+}
+
+func TestCodecUsesAtomicFormat(t *testing.T) {
+	t.Parallel()
+
+	codec := newCodec(t, 0x42)
+	plaintext := []byte("atomic format")
+	id := codec.BlockID(plaintext)
+	if got, want := id.String(), "0673b9086c93982a06b48679b7e6658aeaace10139bf8e5ec75155701540f7a3"; got != want {
+		t.Errorf("Codec.BlockID(%q) = %s, want %s", plaintext, got, want)
+	}
+	sealed, err := codec.Seal(object.Block, id, plaintext)
+	if err != nil {
+		t.Fatalf("Codec.Seal() returned error: %v", err)
+	}
+	wantMagic := []byte{'A', 'T', 'O', 'M', 'I', 'C', 0, 1}
+	if !bytes.HasPrefix(sealed, wantMagic) {
+		t.Errorf("Codec.Seal() prefix = %x, want %x", sealed[:len(wantMagic)], wantMagic)
 	}
 }
 

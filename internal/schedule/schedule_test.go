@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/schedule"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/schedule"
 )
 
 func TestNextDaily(t *testing.T) {

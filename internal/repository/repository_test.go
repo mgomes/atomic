@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/merkle"
 )
 
 const testConfigurationID = "11111111111111111111111111111111"

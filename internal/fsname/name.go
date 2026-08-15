@@ -1,5 +1,5 @@
 // Package fsname validates path components that must round-trip across
-// Ressik's supported filesystems.
+// Atomic's supported filesystems.
 package fsname
 
 import (

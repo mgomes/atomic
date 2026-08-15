@@ -13,15 +13,15 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/mgomes/ressik/internal/cancelerr"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/daemonctl"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/internal/schedule"
+	"github.com/mgomes/atomic/internal/cancelerr"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/daemonctl"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/internal/schedule"
 )
 
 // ErrAlreadyRunning reports that another daemon owns the same state folder.
-var ErrAlreadyRunning = errors.New("Ressik daemon is already running")
+var ErrAlreadyRunning = errors.New("Atomic daemon is already running")
 
 type backupService interface {
 	Collect(context.Context) error

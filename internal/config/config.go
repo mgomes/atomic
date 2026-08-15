@@ -21,7 +21,7 @@ var (
 	durationPattern        = regexp.MustCompile(`^([1-9][0-9]*)(h|d|w)$`)
 )
 
-// Config is the versioned, desired configuration for Ressik.
+// Config is the versioned, desired configuration for Atomic.
 type Config struct {
 	Version         int                    `yaml:"version"`
 	ConfigurationID string                 `yaml:"configuration_id,omitempty"`

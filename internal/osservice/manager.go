@@ -13,7 +13,7 @@ import (
 
 	service "github.com/kardianos/service"
 
-	"github.com/mgomes/ressik/internal/cancelerr"
+	"github.com/mgomes/atomic/internal/cancelerr"
 )
 
 const shutdownTimeout = 25 * time.Second
@@ -29,7 +29,7 @@ type Scope string
 const (
 	// UserScope installs a launch agent or systemd user service.
 	UserScope Scope = "user"
-	// SystemScope is reserved; Ressik currently rejects machine services.
+	// SystemScope is reserved; Atomic currently rejects machine services.
 	SystemScope Scope = "system"
 )
 
@@ -39,7 +39,7 @@ type Action string
 const (
 	// Install registers the daemon.
 	Install Action = "install"
-	// Uninstall removes the daemon without deleting Ressik data.
+	// Uninstall removes the daemon without deleting Atomic data.
 	Uninstall Action = "uninstall"
 	// Start requests daemon startup.
 	Start Action = "start"
@@ -79,7 +79,7 @@ type Options struct {
 	StateDir   string
 }
 
-// Manager controls and, on POSIX systems, hosts one Ressik background job.
+// Manager controls and, on POSIX systems, hosts one Atomic background job.
 type Manager struct {
 	service    service.Service
 	controller platformController
@@ -110,7 +110,7 @@ func New(worker Worker, options Options) (*Manager, error) {
 		return &Manager{controller: controller}, nil
 	}
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
-		return nil, fmt.Errorf("background installation is unsupported on %s; run ressik daemon under a supervisor", runtime.GOOS)
+		return nil, fmt.Errorf("background installation is unsupported on %s; run atomic daemon under a supervisor", runtime.GOOS)
 	}
 	definition, err := serviceDefinition(options)
 	if err != nil {
@@ -226,7 +226,7 @@ func normalizeOptions(options Options) (Options, error) {
 		options.Scope = DefaultScope()
 	}
 	if options.Scope != UserScope {
-		return Options{}, errors.New("Ressik background services support only per-user scope")
+		return Options{}, errors.New("Atomic background services support only per-user scope")
 	}
 	paths := map[string]string{
 		"executable":  options.Executable,
@@ -247,8 +247,8 @@ func normalizeOptions(options Options) (Options, error) {
 func posixServiceDefinition(options Options) *service.Config {
 	return &service.Config{
 		Name:        backgroundName(options.StateDir),
-		DisplayName: "Ressik Backup Service",
-		Description: "Runs scheduled Ressik backup plans.",
+		DisplayName: "Atomic Backup Service",
+		Description: "Runs scheduled Atomic backup plans.",
 		Executable:  options.Executable,
 		Arguments: []string{
 			"--config", options.ConfigPath,

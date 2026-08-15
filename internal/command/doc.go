@@ -1,2 +1,2 @@
-// Package command defines the Ressik command-line interface.
+// Package command defines the Atomic command-line interface.
 package command

@@ -18,10 +18,10 @@ import (
 
 	"github.com/zeebo/blake3"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/fsname"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/fsname"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/merkle"
 )
 
 const (

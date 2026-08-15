@@ -9,7 +9,7 @@ import (
 
 	"github.com/zeebo/blake3"
 
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 const (

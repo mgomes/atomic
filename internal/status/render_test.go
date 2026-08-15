@@ -8,7 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/mgomes/ressik/internal/daemon"
+	"github.com/mgomes/atomic/internal/daemon"
 )
 
 func TestRenderShowsThreeStateHistoryAndPlanDetails(t *testing.T) {
