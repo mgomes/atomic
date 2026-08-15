@@ -1,4 +1,6 @@
-# Atomic
+<h1 align="center">
+  <img src="./atomic.svg" alt="Atomic" width="180">
+</h1>
 
 Atomic is a small, terminal-native backup program. It stores encrypted,
 deduplicated snapshots locally today; S3-compatible storage, Google Drive,
