@@ -3,8 +3,8 @@ package retention
 import (
 	"time"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 // Policy combines a minimum copy count, a maximum snapshot age, and an

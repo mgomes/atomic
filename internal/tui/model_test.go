@@ -58,7 +58,7 @@ func TestModelRendersWideAndNarrowLayouts(t *testing.T) {
 	t.Parallel()
 
 	backend := &fakeBackend{dashboard: Dashboard{
-		ConfigPath: "/tmp/ressik/config.yaml",
+		ConfigPath: "/tmp/atomic/config.yaml",
 		Plans: []Plan{{
 			ID:        "documents",
 			Name:      "Documents",

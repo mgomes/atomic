@@ -5,9 +5,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/daemon"
-	"github.com/mgomes/ressik/internal/schedule"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/daemon"
+	"github.com/mgomes/atomic/internal/schedule"
 )
 
 // Report is a point-in-time view of configured plans and scheduled outcomes.

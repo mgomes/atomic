@@ -3,7 +3,7 @@ package ignore_test
 import (
 	"testing"
 
-	"github.com/mgomes/ressik/internal/ignore"
+	"github.com/mgomes/atomic/internal/ignore"
 )
 
 func TestMatcherMatch(t *testing.T) {

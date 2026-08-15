@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/application"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/application"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 func TestControllerRejectsJobsAfterClose(t *testing.T) {

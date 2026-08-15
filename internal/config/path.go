@@ -10,10 +10,10 @@ import (
 	"github.com/zeebo/blake3"
 )
 
-const configEnvironment = "RESSIK_CONFIG"
+const configEnvironment = "ATOMIC_CONFIG"
 
 // Path resolves the configuration path from an explicit flag, the
-// RESSIK_CONFIG environment variable, or the platform configuration folder.
+// ATOMIC_CONFIG environment variable, or the platform configuration folder.
 func Path(explicit string) (string, error) {
 	path := explicit
 	if path == "" {
@@ -24,7 +24,7 @@ func Path(explicit string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("find user config directory: %w", err)
 		}
-		path = filepath.Join(root, "ressik", "config.yaml")
+		path = filepath.Join(root, "atomic", "config.yaml")
 	}
 	path, err := expandHome(path)
 	if err != nil {
@@ -43,7 +43,7 @@ func DefaultRepository() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "ressik", "repository"), nil
+	return filepath.Join(root, "atomic", "repository"), nil
 }
 
 // DefaultCredentialDir returns the owner-only credential directory for one
@@ -68,7 +68,7 @@ func DefaultCredentialDir(configPath string) (string, error) {
 	}
 	return filepath.Join(
 		root,
-		"ressik",
+		"atomic",
 		"credentials",
 		"instances",
 		fmt.Sprintf("%x", digest[:16]),
@@ -95,7 +95,7 @@ func DefaultStateDir() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find user state directory: %w", err)
 	}
-	return filepath.Join(root, "ressik"), nil
+	return filepath.Join(root, "atomic"), nil
 }
 
 func (l *Loaded) resolve() error {

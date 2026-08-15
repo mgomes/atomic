@@ -29,4 +29,4 @@ jobs:
           cache: true
       - run: go test -count=1 -timeout=20m ./internal/backup
         env:
-          RESSIK_FULL_TESTS: "1"
+          ATOMIC_FULL_TESTS: "1"

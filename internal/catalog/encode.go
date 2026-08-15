@@ -10,7 +10,7 @@ import (
 
 	"modernc.org/sqlite"
 
-	"github.com/mgomes/ressik/internal/fsname"
+	"github.com/mgomes/atomic/internal/fsname"
 )
 
 const (

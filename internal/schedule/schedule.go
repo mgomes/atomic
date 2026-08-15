@@ -6,7 +6,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/mgomes/ressik/internal/config"
+	"github.com/mgomes/atomic/internal/config"
 )
 
 var weekdays = map[string]time.Weekday{

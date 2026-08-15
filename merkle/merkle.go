@@ -10,7 +10,7 @@ import (
 
 const maxLevels = 64
 
-var domain = []byte("ressik-merkle-v1\x00")
+var domain = []byte("atomic-merkle-v1\x00")
 
 // Digest is a 256-bit BLAKE3 Merkle digest.
 type Digest [32]byte

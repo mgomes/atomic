@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/config"
+	"github.com/mgomes/atomic/internal/config"
 )
 
 func TestDefaultCredentialDirNamespacesConfigurations(t *testing.T) {

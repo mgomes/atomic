@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/fsdurable"
+	"github.com/mgomes/atomic/internal/fsdurable"
 )
 
 func TestMkdirAllCreatesNestedDirectories(t *testing.T) {

@@ -129,19 +129,19 @@ func (m model) View() tea.View {
 	content := m.render()
 	view := tea.NewView(content)
 	view.AltScreen = true
-	view.WindowTitle = "Ressik"
+	view.WindowTitle = "Atomic"
 	return view
 }
 
 func (m model) render() string {
-	title := titleStyle.Render("RESSIK")
+	title := titleStyle.Render("ATOMIC")
 	subtitle := subtleStyle.Render("encrypted backup console")
 	header := title + "  " + subtitle
 
 	var body string
 	switch {
 	case m.err != nil && len(m.dashboard.Plans) == 0:
-		body = errorStyle.Render("Unable to load Ressik") + "\n\n" + m.err.Error()
+		body = errorStyle.Render("Unable to load Atomic") + "\n\n" + m.err.Error()
 	case len(m.dashboard.Plans) == 0:
 		body = emptyStyle.Render("No backup plans yet") + "\n\n" +
 			subtleStyle.Render("Edit "+m.dashboard.ConfigPath+" and press R to reload.")

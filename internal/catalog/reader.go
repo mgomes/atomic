@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/fsname"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/fsname"
 )
 
 const digestSize = 32

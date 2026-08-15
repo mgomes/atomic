@@ -6,9 +6,9 @@ Date: 2026-07-12
 
 ## Decision
 
-Ressik will make one configured destination authoritative for each repository.
+Atomic will make one configured destination authoritative for each repository.
 Additional destinations will be one-way mirrors of that authority, not
-independent repositories. Mirrors copy the same repository-relative Ressik keys
+independent repositories. Mirrors copy the same repository-relative Atomic keys
 and bytes and never make their own retention, packing, compaction, or garbage
 collection decisions.
 
@@ -25,7 +25,7 @@ retired by that generation follows afterward. This single chain is the atomic
 boundary for backup, retention, compaction, mirroring, and recovery; it is not
 reconciled with another writer.
 
-Ressik will store complete sealed blocks either as standalone objects or inside
+Atomic will store complete sealed blocks either as standalone objects or inside
 immutable packs. Within each backup generation, newly discovered small blocks
 will be emitted in Merkle-tree traversal order and collected into packs targeting
 roughly 4 MiB. Merkle location is only a placement hint: it is not part of block
@@ -33,7 +33,7 @@ identity, and an existing deduplicated block will not move merely to improve
 locality.
 
 Retention thinning and any future storage-budget enforcement will use the same
-garbage collection path. Ressik will derive reachability from retained snapshot
+garbage collection path. Atomic will derive reachability from retained snapshot
 catalogs, delete fully dead objects, and compact sufficiently fragmented packs
 by copying their live sealed frames into replacement packs. Snapshot catalogs
 will not change when a block moves.
@@ -61,7 +61,7 @@ a crash or cache rebuild. Physical deletion must be justified by the retained
 snapshot graph.
 
 Allowing every destination to choose its own pack layout and deletion history
-would require reconciliation among several writable repositories. Ressik needs
+would require reconciliation among several writable repositories. Atomic needs
 multiple durable copies, but it does not need multiple concurrent authorities.
 
 ## Authority and mirrors
@@ -81,7 +81,7 @@ authority generation at a time:
 5. Apply deletions only after the generation that retired those objects is
    active on the mirror.
 
-An exact mirror has identical active repository-relative Ressik keys and bytes.
+An exact mirror has identical active repository-relative Atomic keys and bytes.
 Provider version IDs, ETags, delete markers, and other service metadata need not
 match. A lagging mirror remains restorable at its last complete generation and
 may temporarily retain objects that the authority has deleted.
@@ -91,19 +91,19 @@ and verification may use a complete mirror. Promoting a mirror is an explicit
 recovery operation that verifies every block reachable from its active
 generation and starts a new random authority epoch. Before promotion, the
 operator must stop the former writer and revoke or make read-only its destination
-access; Ressik aborts if that external fence cannot be established. The promoted
+access; Atomic aborts if that external fence cannot be established. The promoted
 state is never merged with a returning authority, which must instead be replaced
 from the new one. Changes newer than the mirror's last complete generation may
 be lost.
 
-Ressik assumes one mutating process at a time. A repository writer lock
+Atomic assumes one mutating process at a time. A repository writer lock
 serializes backup, retention, compaction, and mirror promotion on one machine.
-Ressik does not provide distributed locking or automatic fencing.
+Atomic does not provide distributed locking or automatic fencing.
 
 ## Snapshot publication and physical resolution
 
 The SQLite catalog excludes credentials, retry state, destination state, and
-physical block locations. Ressik will materialize it with SQLite's Online Backup
+physical block locations. Atomic will materialize it with SQLite's Online Backup
 API rather than copying a live database and its journal.
 
 A snapshot becomes visible at the authority only after:
@@ -155,7 +155,7 @@ may physical cleanup begin:
 - A partially live pack remains readable until replacement locations for all of
   its live members are committed.
 
-Ressik will consider compaction after retention or budget enforcement rather
+Atomic will consider compaction after retention or budget enforcement rather
 than after every file change. A pack becomes a candidate only when both its dead
 byte count and dead-byte ratio exceed configured thresholds. Exact defaults are
 an implementation choice; they do not affect repository correctness.
@@ -177,7 +177,7 @@ safe to clean during the next garbage-collection pass.
 Compaction requires temporary remote headroom. Budget enforcement deletes fully
 dead objects first and rewrites fragmented packs incrementally, bounding the
 extra storage to a small number of replacement packs. If the provider cannot
-supply that headroom, Ressik reports that compaction is blocked rather than
+supply that headroom, Atomic reports that compaction is blocked rather than
 deleting an old pack first.
 
 ## Restore and recovery
@@ -190,7 +190,7 @@ authenticates every catalog, index, and block and recomputes the existing Merkle
 roots before publishing restored files. The new catalog preserves the existing
 path validation, traversal rejection, and atomic no-replace publication rules.
 
-Losing local state does not lose repository authority. Ressik rebuilds its cache
+Losing local state does not lose repository authority. Atomic rebuilds its cache
 from the latest valid state generation, committed catalogs, and active pack
 indexes at the configured authority. Garbage collection derives liveness from
 that authenticated inventory, not from objects missing in a provider listing.
@@ -204,13 +204,13 @@ catalog data.
 
 The 5% ceiling covers encrypted block and pack staging, retryable partial
 uploads, and cached remote payload. One cross-process quota ledger per cache root
-counts existing allocated payload bytes and outstanding reservations. Ressik
+counts existing allocated payload bytes and outstanding reservations. Atomic
 reconciles it with crash leftovers at startup and each operation start, and
 reserves the worst-case simultaneous temporary and final allocation before
 writing. Concurrent operations share the smallest active ceiling. Before
-lowering that ceiling, Ressik evicts rebuildable cache; if non-evictable staging
+lowering that ceiling, Atomic evicts rebuildable cache; if non-evictable staging
 would still exceed it, the new operation must use no disk payload allowance,
-wait, or fail. Ressik never activates a ceiling that is already exceeded.
+wait, or fail. Atomic never activates a ceiling that is already exceeded.
 
 Backup derives its ceiling from preflight included-file bytes. Restore and
 serial verification use the selected snapshot's authenticated plaintext
@@ -222,16 +222,16 @@ operation stops before publishing a snapshot rather than exceed its allowance.
 SQLite working files, encrypted catalogs, physical-location rows, and other
 rebuildable metadata use a separate counter and configured cap in the same
 reservation ledger because metadata for many empty or tiny files can exceed any
-percentage of payload bytes. Ressik reconciles both counters at startup and each
+percentage of payload bytes. Atomic reconciles both counters at startup and each
 operation start and fails a metadata write if it cannot measure allocated bytes
 conservatively. The encrypted catalog must fit this allowance as a replayable
 single-object upload; otherwise backup fails without publishing a new state
-generation. Ressik reports payload and metadata usage separately.
+generation. Atomic reports payload and metadata usage separately.
 
 ## Repository format
 
-No Ressik repository format has been released. This decision therefore extends
-the initial `ressik/v1/<repository-id>/...` layout from ADR 0003 instead of
+No Atomic repository format has been released. This decision therefore extends
+the initial `atomic/v1/<repository-id>/...` layout from ADR 0003 instead of
 creating a parallel namespace or migration path. The first supported format will
 include the catalog, pack-index, repository-state, and commit schemas described
 here while retaining the existing repository-scoped block IDs, key derivation,
@@ -286,7 +286,7 @@ compaction.
   objects and an interrupted overwrite could destroy retained data.
 - Packing strictly by Merkle location improves locality, but deduplicated blocks
   may have multiple parents and ancestor hashes change with their descendants.
-  Ressik therefore uses traversal location only as a placement hint for new
+  Atomic therefore uses traversal location only as a placement hint for new
   blocks.
 - Never compacting partially live packs avoids rewrite cost but allows dead bytes
   to grow without bound.

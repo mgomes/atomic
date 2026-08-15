@@ -13,15 +13,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/fsname"
-	"github.com/mgomes/ressik/internal/ignore"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/pathcheck"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/internal/retention"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/fsname"
+	"github.com/mgomes/atomic/internal/ignore"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/pathcheck"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/internal/retention"
+	"github.com/mgomes/atomic/merkle"
 )
 
 // Engine captures and restores snapshots in one repository.
@@ -206,7 +206,7 @@ func (e *Engine) validatePlanPaths(planID string, plan config.Plan) error {
 			return fmt.Errorf("compare plan %q source %q with repository: %w", planID, sourceID, err)
 		}
 		if overlaps {
-			return fmt.Errorf("plan %q source %q physically overlaps the Ressik repository", planID, sourceID)
+			return fmt.Errorf("plan %q source %q physically overlaps the Atomic repository", planID, sourceID)
 		}
 	}
 	return nil
@@ -322,7 +322,7 @@ func (e *Engine) scanEntry(
 		return entry, []repository.Entry{entry}, nil
 	case before.IsDir():
 		if protected.Matches(before) {
-			return repository.Entry{}, nil, errors.New("source contains an alias of the Ressik repository")
+			return repository.Entry{}, nil, errors.New("source contains an alias of the Atomic repository")
 		}
 		return e.scanDirectory(ctx, path, relative, before, previous, protected, stats)
 	default:

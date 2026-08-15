@@ -12,8 +12,8 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/pack"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/pack"
 )
 
 //go:embed testdata/index-v1.hex

@@ -1,4 +1,4 @@
-module github.com/mgomes/ressik
+module github.com/mgomes/atomic
 
 go 1.25.0
 

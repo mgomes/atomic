@@ -15,9 +15,9 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 
-	"github.com/mgomes/ressik/internal/chunk"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/chunk"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/merkle"
 )
 
 func TestEncodeRoundTripAndQueries(t *testing.T) {

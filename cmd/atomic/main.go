@@ -1,4 +1,4 @@
-// The ressik command creates and manages encrypted backups.
+// The atomic command creates and manages encrypted backups.
 package main
 
 import (
@@ -9,7 +9,7 @@ import (
 	"syscall"
 	_ "time/tzdata"
 
-	"github.com/mgomes/ressik/internal/command"
+	"github.com/mgomes/atomic/internal/command"
 )
 
 var version = "dev"

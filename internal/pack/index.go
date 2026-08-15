@@ -11,7 +11,7 @@ import (
 
 	"github.com/zeebo/blake3"
 
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 	memberSize      = 32 + 8 + 4
 )
 
-var indexMagic = [8]byte{'R', 'E', 'S', 'S', 'I', 'K', 'P', 'I'}
+var indexMagic = [8]byte{'A', 'T', 'O', 'M', 'I', 'C', 'P', 'I'}
 
 // Digest is the BLAKE3 digest of one complete immutable pack.
 type Digest [32]byte

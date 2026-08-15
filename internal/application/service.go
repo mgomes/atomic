@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/mgomes/ressik/internal/backup"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/pathcheck"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/pathcheck"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 // ErrPlanNotFound reports that a requested plan is absent from configuration.
@@ -48,7 +48,7 @@ func (s *Service) Initialize() (*config.Loaded, error) {
 	}
 	cfg.ConfigurationID = configurationID.String()[:32]
 	repositoryPath := filepath.Join(filepath.Dir(path), "repository")
-	if s.configPath == "" && os.Getenv("RESSIK_CONFIG") == "" {
+	if s.configPath == "" && os.Getenv("ATOMIC_CONFIG") == "" {
 		repositoryPath, err = config.DefaultRepository()
 		if err != nil {
 			return nil, err
@@ -277,7 +277,7 @@ func validateLivePaths(repositoryPath string, plans map[string]config.Plan) erro
 				return fmt.Errorf("compare plan %q source %q with repository: %w", planID, sourceID, err)
 			}
 			if overlaps {
-				return fmt.Errorf("plan %q source %q physically overlaps the Ressik repository", planID, sourceID)
+				return fmt.Errorf("plan %q source %q physically overlaps the Atomic repository", planID, sourceID)
 			}
 		}
 	}

@@ -78,12 +78,12 @@ func marshalTask(userSID, executable, arguments string) ([]byte, error) {
 		Version: "1.2",
 		XMLNS:   "http://schemas.microsoft.com/windows/2004/02/mit/task",
 		RegistrationInfo: taskRegistration{
-			Author:      "Ressik",
-			Description: "Runs scheduled Ressik backup plans for the signed-in user.",
+			Author:      "Atomic",
+			Description: "Runs scheduled Atomic backup plans for the signed-in user.",
 		},
 		Triggers: taskTriggers{Logon: taskLogonTrigger{Enabled: true, UserID: userSID}},
 		Principals: taskPrincipals{Principal: taskPrincipal{
-			ID:        "RessikUser",
+			ID:        "AtomicUser",
 			UserID:    userSID,
 			LogonType: "InteractiveToken",
 			RunLevel:  "LeastPrivilege",
@@ -99,7 +99,7 @@ func marshalTask(userSID, executable, arguments string) ([]byte, error) {
 			Priority:           7,
 		},
 		Actions: taskActions{
-			Context: "RessikUser",
+			Context: "AtomicUser",
 			Exec:    taskExec{Command: executable, Arguments: arguments},
 		},
 	}

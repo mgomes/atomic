@@ -13,7 +13,7 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/mgomes/ressik/internal/daemonctl"
+	"github.com/mgomes/atomic/internal/daemonctl"
 )
 
 func TestNewTaskControllerNamespacesConfigAndRunsForegroundDaemon(t *testing.T) {
@@ -21,16 +21,16 @@ func TestNewTaskControllerNamespacesConfigAndRunsForegroundDaemon(t *testing.T) 
 
 	controller, err := newTaskController(Options{
 		Scope:      UserScope,
-		Executable: `C:\Program Files\Ressik\ressik.exe`,
-		ConfigPath: `C:\Users\me\AppData\Roaming\ressik\config.yaml`,
-		StateDir:   `C:\Users\me\AppData\Local\ressik\instances\abc`,
+		Executable: `C:\Program Files\Atomic\atomic.exe`,
+		ConfigPath: `C:\Users\me\AppData\Roaming\atomic\config.yaml`,
+		StateDir:   `C:\Users\me\AppData\Local\atomic\instances\abc`,
 	})
 	if err != nil {
 		t.Fatalf("newTaskController() returned error: %v", err)
 	}
 	task := controller.(*taskController)
-	if !strings.HasPrefix(task.name, "ressik-") {
-		t.Errorf("task name = %q, want Ressik namespace", task.name)
+	if !strings.HasPrefix(task.name, "atomic-") {
+		t.Errorf("task name = %q, want Atomic namespace", task.name)
 	}
 	if !strings.Contains(task.arguments, "daemon") || strings.Contains(task.arguments, "managed") {
 		t.Errorf("task arguments = %q, want direct foreground daemon", task.arguments)
@@ -47,7 +47,7 @@ func TestTaskControllerForcedRestartCompletesLifecycle(t *testing.T) {
 	var calls []string
 	terminated := false
 	task := &taskController{
-		name:     "ressik-test",
+		name:     "atomic-test",
 		stateDir: t.TempDir(),
 		commandHook: func(_ context.Context, arguments ...string) error {
 			calls = append(calls, arguments[0])
@@ -88,7 +88,7 @@ func TestTaskControllerUninstallKeepsRequestUntilDeletion(t *testing.T) {
 	requestPresentAtDelete := false
 	var task *taskController
 	task = &taskController{
-		name:     "ressik-test",
+		name:     "atomic-test",
 		stateDir: t.TempDir(),
 		commandHook: func(_ context.Context, arguments ...string) error {
 			if arguments[0] == "/Delete" {
@@ -130,7 +130,7 @@ func TestTaskControllerRejectsMissingTaskBeforeRequest(t *testing.T) {
 
 	queryErr := errors.New("task not found")
 	task := &taskController{
-		name:     "ressik-test",
+		name:     "atomic-test",
 		stateDir: t.TempDir(),
 		commandHook: func(_ context.Context, arguments ...string) error {
 			if arguments[0] == "/Query" {
@@ -156,9 +156,9 @@ func TestTaskControllerInstallDoesNotOverwriteExistingTask(t *testing.T) {
 
 	var createArguments []string
 	task := &taskController{
-		name:       "ressik-test",
+		name:       "atomic-test",
 		userSID:    "S-1-5-21-1-2-3-1001",
-		executable: `C:\ressik.exe`,
+		executable: `C:\atomic.exe`,
 		arguments:  `daemon`,
 		stateDir:   t.TempDir(),
 		commandHook: func(_ context.Context, arguments ...string) error {
@@ -185,7 +185,7 @@ func TestTaskControllerStartIsIdempotentWhenDaemonRuns(t *testing.T) {
 	defer lock.Unlock()
 	var calls []string
 	task := &taskController{
-		name:     "ressik-test",
+		name:     "atomic-test",
 		stateDir: stateDir,
 		commandHook: func(_ context.Context, arguments ...string) error {
 			calls = append(calls, arguments[0])
@@ -206,7 +206,7 @@ func TestTaskControllerStartRetriesIgnoredRunUntilDaemonOwnsLock(t *testing.T) {
 	var calls []string
 	waits := 0
 	task := &taskController{
-		name:     "ressik-test",
+		name:     "atomic-test",
 		stateDir: t.TempDir(),
 		commandHook: func(_ context.Context, arguments ...string) error {
 			calls = append(calls, arguments[0])
@@ -234,7 +234,7 @@ func TestTaskControllerStartClearsRequestBeforeEnablingTask(t *testing.T) {
 	}
 	requestClearedAtEnable := false
 	task := &taskController{
-		name:     "ressik-test",
+		name:     "atomic-test",
 		stateDir: stateDir,
 		commandHook: func(_ context.Context, arguments ...string) error {
 			if arguments[0] == "/Change" && slices.Contains(arguments, "/Enable") {

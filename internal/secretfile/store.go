@@ -10,13 +10,13 @@ import (
 	"regexp"
 	"sync"
 
-	"github.com/mgomes/ressik/internal/fsname"
+	"github.com/mgomes/atomic/internal/fsname"
 )
 
 const (
 	// MaxSize is the largest secret accepted by a Store.
 	MaxSize    = 64 << 10
-	tempPrefix = ".ressik-secret-"
+	tempPrefix = ".atomic-secret-"
 )
 
 var (

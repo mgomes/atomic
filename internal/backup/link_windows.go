@@ -9,8 +9,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/internal/winpath"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/internal/winpath"
 )
 
 const allowUnprivilegedSymlink = 0x2

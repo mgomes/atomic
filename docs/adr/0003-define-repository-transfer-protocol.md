@@ -12,12 +12,12 @@ exposing local paths or `repository.key` remain in force.
 
 ## Decision
 
-Ressik will expose authenticated encrypted repository objects through typed
+Atomic will expose authenticated encrypted repository objects through typed
 references and map them to provider-independent, format-versioned storage keys.
 A stable 128-bit repository ID derived from `repository.key` with a dedicated
 BLAKE3 derive-key context namespaces every destination object.
 
-The canonical layout is `ressik/v1/<repository-id>/...`. Blocks retain their
+The canonical layout is `atomic/v1/<repository-id>/...`. Blocks retain their
 two-character shard, manifests use the snapshot ID, and commit markers use the
 same snapshot ID. Destination adapters must copy the exact stored ciphertext,
 upload referenced blocks before the manifest, and publish the commit marker

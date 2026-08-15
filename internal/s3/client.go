@@ -105,7 +105,7 @@ type Page struct {
 	NextContinuationToken string
 }
 
-// Client performs the S3 operations needed by Ressik. It is safe for
+// Client performs the S3 operations needed by Atomic. It is safe for
 // concurrent use.
 type Client struct {
 	endpoint     url.URL

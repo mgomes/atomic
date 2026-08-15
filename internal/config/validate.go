@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mgomes/ressik/internal/fsname"
-	"github.com/mgomes/ressik/internal/ignore"
+	"github.com/mgomes/atomic/internal/fsname"
+	"github.com/mgomes/atomic/internal/ignore"
 )
 
 var validDays = map[string]bool{
@@ -110,7 +110,7 @@ func (l *Loaded) validatePlan(planID string, plan Plan) error {
 		}
 		paths[canonical] = sourceID
 		if containsPath(canonical, l.Config.Repository) || containsPath(l.Config.Repository, canonical) {
-			return invalid(field+".path", "overlaps the Ressik repository and would recurse")
+			return invalid(field+".path", "overlaps the Atomic repository and would recurse")
 		}
 	}
 	return nil

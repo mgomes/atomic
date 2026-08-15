@@ -13,7 +13,7 @@ import (
 	"github.com/zeebo/blake3"
 	"go.yaml.in/yaml/v3"
 
-	"github.com/mgomes/ressik/internal/fsdurable"
+	"github.com/mgomes/atomic/internal/fsdurable"
 )
 
 // Loaded contains a validated configuration and its resolved paths.

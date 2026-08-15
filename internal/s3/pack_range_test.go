@@ -5,8 +5,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/pack"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/pack"
 )
 
 func TestClientRangeRoundTripsEncryptedPackMember(t *testing.T) {

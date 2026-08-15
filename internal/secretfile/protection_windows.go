@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"github.com/mgomes/ressik/internal/fsdurable"
-	"github.com/mgomes/ressik/internal/winpath"
+	"github.com/mgomes/atomic/internal/fsdurable"
+	"github.com/mgomes/atomic/internal/winpath"
 )
 
 const fileAllAccess windows.ACCESS_MASK = windows.STANDARD_RIGHTS_REQUIRED | windows.SYNCHRONIZE | 0x1ff

@@ -11,15 +11,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 func TestRepositoryIDIsStableAndKeyScoped(t *testing.T) {
 	t.Parallel()
 
 	first := openRepositoryWithKey(t, 0x42)
-	if got, want := first.ID().String(), "760418da81cb7d38132715ac53592e28"; got != want {
+	if got, want := first.ID().String(), "7711c4c018c81512957511a88853cd90"; got != want {
 		t.Errorf("Repository.ID() = %q, want %q", got, want)
 	}
 	if got, want := len(first.ID().String()), 32; got != want {
@@ -51,7 +51,7 @@ func TestRepositoryObjectKeyUsesCanonicalLayout(t *testing.T) {
 	for i := range id {
 		id[i] = 0xab
 	}
-	base := "ressik/v1/" + repo.ID().String()
+	base := "atomic/v1/" + repo.ID().String()
 	tests := []struct {
 		name    string
 		kind    object.Kind

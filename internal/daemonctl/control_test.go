@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/daemonctl"
+	"github.com/mgomes/atomic/internal/daemonctl"
 )
 
 func TestWatcherCancelsOnStopRequest(t *testing.T) {

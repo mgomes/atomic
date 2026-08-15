@@ -7,7 +7,7 @@ import (
 	"charm.land/lipgloss/v2"
 	cli "github.com/urfave/cli/v3"
 
-	"github.com/mgomes/ressik/internal/status"
+	"github.com/mgomes/atomic/internal/status"
 )
 
 func statusCommand(configPath *string) *cli.Command {

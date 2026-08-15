@@ -1,2 +1,2 @@
-// Package tui renders Ressik's terminal dashboard.
+// Package tui renders Atomic's terminal dashboard.
 package tui

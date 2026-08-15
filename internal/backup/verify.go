@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/merkle"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/merkle"
 )
 
 // Verification summarizes one complete repository integrity check.

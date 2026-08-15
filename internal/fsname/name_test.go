@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/fsname"
+	"github.com/mgomes/atomic/internal/fsname"
 )
 
 func TestComponent(t *testing.T) {

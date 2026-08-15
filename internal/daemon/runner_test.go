@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/daemonctl"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/daemonctl"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 type fakeService struct {

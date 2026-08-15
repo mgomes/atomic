@@ -12,8 +12,8 @@ import (
 
 	"github.com/gofrs/flock"
 
-	"github.com/mgomes/ressik/internal/fsdurable"
-	"github.com/mgomes/ressik/internal/object"
+	"github.com/mgomes/atomic/internal/fsdurable"
+	"github.com/mgomes/atomic/internal/object"
 )
 
 const (

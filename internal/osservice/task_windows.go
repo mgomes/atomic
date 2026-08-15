@@ -16,7 +16,7 @@ import (
 	"github.com/gofrs/flock"
 	"golang.org/x/sys/windows"
 
-	"github.com/mgomes/ressik/internal/daemonctl"
+	"github.com/mgomes/atomic/internal/daemonctl"
 )
 
 const (
@@ -334,7 +334,7 @@ func (t *taskController) install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(t.stateDir, ".ressik-task-*.xml")
+	file, err := os.CreateTemp(t.stateDir, ".atomic-task-*.xml")
 	if err != nil {
 		return fmt.Errorf("create temporary task definition: %w", err)
 	}

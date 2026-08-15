@@ -6,9 +6,9 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
-	"github.com/mgomes/ressik/internal/retention"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
+	"github.com/mgomes/atomic/internal/retention"
 )
 
 func TestSelectUsesUnionSemantics(t *testing.T) {

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/daemon"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/daemon"
 )
 
 func TestLoadJoinsExpectedScheduleSlotsAndSortsPlans(t *testing.T) {

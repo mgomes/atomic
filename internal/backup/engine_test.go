@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mgomes/ressik/internal/backup"
-	"github.com/mgomes/ressik/internal/config"
-	"github.com/mgomes/ressik/internal/object"
-	"github.com/mgomes/ressik/internal/repository"
+	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/config"
+	"github.com/mgomes/atomic/internal/object"
+	"github.com/mgomes/atomic/internal/repository"
 )
 
 func TestBackupRestoreDedupAndRetention(t *testing.T) {
@@ -472,7 +472,7 @@ func TestFailedRestoreRemovesStagingWithRestrictiveDirectoryModes(t *testing.T) 
 	if err := engine.Restore(context.Background(), summary.ID, backup.RestoreOptions{Destination: destination}); err == nil {
 		t.Fatal("Restore(tampered block) error = nil, want integrity error")
 	}
-	staging, err := filepath.Glob(filepath.Join(root, ".ressik-restore-*"))
+	staging, err := filepath.Glob(filepath.Join(root, ".atomic-restore-*"))
 	if err != nil {
 		t.Fatalf("Glob(staging) returned error: %v", err)
 	}

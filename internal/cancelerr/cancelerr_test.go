@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mgomes/ressik/internal/cancelerr"
+	"github.com/mgomes/atomic/internal/cancelerr"
 )
 
 func TestOnly(t *testing.T) {
