@@ -98,10 +98,10 @@ func (e *Engine) backup(
 		committed := false
 		var manifest repository.Manifest
 		defer func() {
-			if committed || ctx.Err() != nil {
+			if committed {
 				return
 			}
-			cleanupCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 			defer cancel()
 			if _, err := e.repository.Collect(cleanupCtx); err != nil {
 				workErr = errors.Join(workErr, fmt.Errorf("collect blocks from failed backup: %w", err))

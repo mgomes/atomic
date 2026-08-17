@@ -1,15 +1,18 @@
 package backup_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/chunk"
 	"github.com/mgomes/atomic/internal/config"
 	"github.com/mgomes/atomic/internal/object"
 	"github.com/mgomes/atomic/internal/repository"
@@ -159,6 +162,42 @@ func TestBackupAppliesChangedIgnorePatterns(t *testing.T) {
 	}
 	if third.Root != first.Root {
 		t.Errorf("Backup(unfiltered third).Root = %s, want original root %s", third.Root, first.Root)
+	}
+}
+
+func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	if err := os.WriteFile(source, bytes.Repeat([]byte("x"), 3*chunk.DefaultSize), 0o600); err != nil {
+		t.Fatalf("WriteFile(source) returned error: %v", err)
+	}
+	repo, engine := newTestEngine(t, filepath.Join(root, "repository"))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := engine.Backup(ctx, "test", testPlan(source, 1))
+		done <- err
+	}()
+
+	for countBlockObjects(t, repo.Root()) == 0 {
+		select {
+		case err := <-done:
+			t.Fatalf("Backup() returned %v before storing a block", err)
+		default:
+		}
+	}
+	cancel()
+
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Backup() error = %v, want context.Canceled", err)
+	}
+	if got := countBlockObjects(t, repo.Root()); got != 0 {
+		t.Errorf("canceled Backup() left %d block objects, want 0", got)
 	}
 }
 
@@ -689,6 +728,24 @@ func testPlan(source string, keepLast int) config.Plan {
 		Sources:   map[string]config.Source{"files": {Path: source}},
 		Retention: config.Retention{KeepLast: keepLast},
 	}
+}
+
+func countBlockObjects(t *testing.T, root string) int {
+	t.Helper()
+	count := 0
+	err := filepath.WalkDir(filepath.Join(root, "blocks"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".block") {
+			count++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WalkDir(blocks) returned error: %v", err)
+	}
+	return count
 }
 
 func writeTestFile(t *testing.T, path, content string) {

@@ -260,21 +260,3 @@ func TestBackupRootIncludesSourceMetadata(t *testing.T) {
 		t.Errorf("Backup(second).ReusedBlocks = %d, want %d", got, want)
 	}
 }
-
-func countBlockObjects(t *testing.T, root string) int {
-	t.Helper()
-	count := 0
-	err := filepath.WalkDir(filepath.Join(root, "blocks"), func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".block") {
-			count++
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("WalkDir(blocks) returned error: %v", err)
-	}
-	return count
-}
