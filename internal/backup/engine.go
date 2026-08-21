@@ -30,6 +30,7 @@ type Engine struct {
 	splitter   *chunk.Fixed
 	matcher    ignore.Matcher
 	now        func() time.Time
+	afterBlock func()
 }
 
 const standaloneConfigurationID = "00000000000000000000000000000000"
@@ -98,6 +99,8 @@ func (e *Engine) backup(
 		committed := false
 		var manifest repository.Manifest
 		defer func() {
+			// Canceled captures skip collection: directory fsync cannot observe
+			// cancellation and would block shutdown. The next Collect reclaims orphans.
 			if committed || ctx.Err() != nil {
 				return
 			}
@@ -485,6 +488,9 @@ func (e *Engine) scanFile(
 			stats.StoredBytes += int64(ref.Length)
 		} else {
 			stats.ReusedBlocks++
+		}
+		if e.afterBlock != nil {
+			e.afterBlock()
 		}
 		return nil
 	})

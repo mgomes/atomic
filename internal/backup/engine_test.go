@@ -5,11 +5,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/cancelerr"
+	"github.com/mgomes/atomic/internal/chunk"
 	"github.com/mgomes/atomic/internal/config"
 	"github.com/mgomes/atomic/internal/object"
 	"github.com/mgomes/atomic/internal/repository"
@@ -160,6 +163,55 @@ func TestBackupAppliesChangedIgnorePatterns(t *testing.T) {
 	if third.Root != first.Root {
 		t.Errorf("Backup(unfiltered third).Root = %s, want original root %s", third.Root, first.Root)
 	}
+}
+
+func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := filepath.Join(root, "source")
+	payload := make([]byte, 2*chunk.DefaultSize)
+	payload[0] = 1
+	payload[chunk.DefaultSize] = 2
+	if err := os.WriteFile(source, payload, 0o600); err != nil {
+		t.Fatalf("WriteFile(source) returned error: %v", err)
+	}
+	repo, engine := newTestEngine(t, filepath.Join(root, "repository"))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	firstBlock := make(chan struct{})
+	resume := make(chan struct{})
+	var once sync.Once
+	engine.SetAfterBlock(func() {
+		once.Do(func() { close(firstBlock) })
+		<-resume
+	})
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := engine.Backup(ctx, "test", testPlan(source, 1))
+		done <- err
+	}()
+
+	select {
+	case <-firstBlock:
+	case err := <-done:
+		t.Fatalf("Backup() returned %v before storing a block", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Backup() did not publish a block within 10 seconds")
+	}
+	cancel()
+	close(resume)
+
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Backup() error = %v, want context.Canceled", err)
+	}
+	if !cancelerr.Only(err) {
+		t.Fatalf("Backup() error = %v, want only context cancellation", err)
+	}
+	collectOrphans(t, repo)
 }
 
 func TestBackupReusesPriorFileWithoutOpeningBlock(t *testing.T) {
@@ -620,6 +672,9 @@ func TestBackupCancellationReturnsPromptly(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("Backup() error = %v, want context cancellation", err)
 		}
+		if !cancelerr.Only(err) {
+			t.Errorf("Backup() error = %v, want only context cancellation", err)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Backup() did not return promptly after cancellation")
 	}
@@ -689,6 +744,52 @@ func testPlan(source string, keepLast int) config.Plan {
 		Sources:   map[string]config.Source{"files": {Path: source}},
 		Retention: config.Retention{KeepLast: keepLast},
 	}
+}
+
+func collectOrphans(t *testing.T, repo *repository.Repository) {
+	t.Helper()
+	deadline := time.NewTimer(2 * time.Second)
+	poll := time.NewTicker(20 * time.Millisecond)
+	defer deadline.Stop()
+	defer poll.Stop()
+	var lastCount int
+	for {
+		err := repo.Exclusive(context.Background(), func() error {
+			_, err := repo.Collect(context.Background())
+			return err
+		})
+		if err != nil {
+			t.Fatalf("Collect() returned error: %v", err)
+		}
+		lastCount = countBlockObjects(t, repo.Root())
+		if lastCount == 0 {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Errorf("Collect() after canceled Backup() left %d block objects, want 0", lastCount)
+			return
+		case <-poll.C:
+		}
+	}
+}
+
+func countBlockObjects(t *testing.T, root string) int {
+	t.Helper()
+	count := 0
+	err := filepath.WalkDir(filepath.Join(root, "blocks"), func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".block") {
+			count++
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("WalkDir(blocks) returned error: %v", err)
+	}
+	return count
 }
 
 func writeTestFile(t *testing.T, path, content string) {
