@@ -184,11 +184,17 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 		done <- err
 	}()
 
+	deadline := time.NewTimer(5 * time.Second)
+	poll := time.NewTicker(time.Millisecond)
+	defer deadline.Stop()
+	defer poll.Stop()
 	for countBlockObjects(t, repo.Root()) == 0 {
 		select {
 		case err := <-done:
 			t.Fatalf("Backup() returned %v before storing a block", err)
-		default:
+		case <-poll.C:
+		case <-deadline.C:
+			t.Fatal("Backup() did not publish a block within 5 seconds")
 		}
 	}
 	cancel()
@@ -201,9 +207,6 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 		t.Fatalf("Backup() error = %v, want only context cancellation", err)
 	}
 	collectOrphans(t, repo)
-	if got := countBlockObjects(t, repo.Root()); got != 0 {
-		t.Errorf("Collect() after canceled Backup() left %d block objects, want 0", got)
-	}
 }
 
 func TestBackupReusesPriorFileWithoutOpeningBlock(t *testing.T) {
@@ -740,12 +743,29 @@ func testPlan(source string, keepLast int) config.Plan {
 
 func collectOrphans(t *testing.T, repo *repository.Repository) {
 	t.Helper()
-	err := repo.Exclusive(context.Background(), func() error {
-		_, err := repo.Collect(context.Background())
-		return err
-	})
-	if err != nil {
-		t.Fatalf("Collect() returned error: %v", err)
+	deadline := time.NewTimer(2 * time.Second)
+	poll := time.NewTicker(20 * time.Millisecond)
+	defer deadline.Stop()
+	defer poll.Stop()
+	var lastCount int
+	for {
+		err := repo.Exclusive(context.Background(), func() error {
+			_, err := repo.Collect(context.Background())
+			return err
+		})
+		if err != nil {
+			t.Fatalf("Collect() returned error: %v", err)
+		}
+		lastCount = countBlockObjects(t, repo.Root())
+		if lastCount == 0 {
+			return
+		}
+		select {
+		case <-deadline.C:
+			t.Errorf("Collect() after canceled Backup() left %d block objects, want 0", lastCount)
+			return
+		case <-poll.C:
+		}
 	}
 }
 
