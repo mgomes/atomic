@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/mgomes/atomic/internal/backup"
+	"github.com/mgomes/atomic/internal/cancelerr"
 	"github.com/mgomes/atomic/internal/chunk"
 	"github.com/mgomes/atomic/internal/config"
 	"github.com/mgomes/atomic/internal/object"
@@ -196,8 +197,12 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Backup() error = %v, want context.Canceled", err)
 	}
+	if !cancelerr.Only(err) {
+		t.Fatalf("Backup() error = %v, want only context cancellation", err)
+	}
+	collectOrphans(t, repo)
 	if got := countBlockObjects(t, repo.Root()); got != 0 {
-		t.Errorf("canceled Backup() left %d block objects, want 0", got)
+		t.Errorf("Collect() after canceled Backup() left %d block objects, want 0", got)
 	}
 }
 
@@ -659,6 +664,9 @@ func TestBackupCancellationReturnsPromptly(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("Backup() error = %v, want context cancellation", err)
 		}
+		if !cancelerr.Only(err) {
+			t.Errorf("Backup() error = %v, want only context cancellation", err)
+		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("Backup() did not return promptly after cancellation")
 	}
@@ -727,6 +735,17 @@ func testPlan(source string, keepLast int) config.Plan {
 		Enabled:   true,
 		Sources:   map[string]config.Source{"files": {Path: source}},
 		Retention: config.Retention{KeepLast: keepLast},
+	}
+}
+
+func collectOrphans(t *testing.T, repo *repository.Repository) {
+	t.Helper()
+	err := repo.Exclusive(context.Background(), func() error {
+		_, err := repo.Collect(context.Background())
+		return err
+	})
+	if err != nil {
+		t.Fatalf("Collect() returned error: %v", err)
 	}
 }
 

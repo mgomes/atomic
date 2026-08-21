@@ -34,6 +34,10 @@ type Engine struct {
 
 const standaloneConfigurationID = "00000000000000000000000000000000"
 
+// failedBackupCollectTimeout bounds orphan collection after a failed capture so
+// cancellation can still return before service shutdown reports a hang.
+const failedBackupCollectTimeout = 2 * time.Second
+
 // New returns a backup engine using the version-one chunk size and optional
 // source-relative ignore patterns.
 func New(repo *repository.Repository, patterns ...string) (*Engine, error) {
@@ -101,9 +105,9 @@ func (e *Engine) backup(
 			if committed {
 				return
 			}
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+			cleanupCtx, cancel := failedBackupCollectContext(ctx)
 			defer cancel()
-			if _, err := e.repository.Collect(cleanupCtx); err != nil {
+			if _, err := e.repository.Collect(cleanupCtx); err != nil && ctx.Err() == nil {
 				workErr = errors.Join(workErr, fmt.Errorf("collect blocks from failed backup: %w", err))
 			}
 		}()
@@ -184,6 +188,10 @@ func (e *Engine) backup(
 		return nil
 	})
 	return summary, err
+}
+
+func failedBackupCollectContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), failedBackupCollectTimeout)
 }
 
 func (e *Engine) validatePlanPaths(planID string, plan config.Plan) error {
