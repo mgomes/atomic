@@ -30,6 +30,7 @@ type Engine struct {
 	splitter   *chunk.Fixed
 	matcher    ignore.Matcher
 	now        func() time.Time
+	afterBlock func()
 }
 
 const standaloneConfigurationID = "00000000000000000000000000000000"
@@ -487,6 +488,9 @@ func (e *Engine) scanFile(
 			stats.StoredBytes += int64(ref.Length)
 		} else {
 			stats.ReusedBlocks++
+		}
+		if e.afterBlock != nil {
+			e.afterBlock()
 		}
 		return nil
 	})

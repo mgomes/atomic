@@ -170,10 +170,9 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 
 	root := t.TempDir()
 	source := filepath.Join(root, "source")
-	payload := make([]byte, 8*chunk.DefaultSize)
-	for i := range 8 {
-		payload[i*chunk.DefaultSize] = byte(i + 1)
-	}
+	payload := make([]byte, 2*chunk.DefaultSize)
+	payload[0] = 1
+	payload[chunk.DefaultSize] = 2
 	if err := os.WriteFile(source, payload, 0o600); err != nil {
 		t.Fatalf("WriteFile(source) returned error: %v", err)
 	}
@@ -181,31 +180,29 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	firstBlock := make(chan struct{})
+	resume := make(chan struct{})
+	var once sync.Once
+	engine.SetAfterBlock(func() {
+		once.Do(func() { close(firstBlock) })
+		<-resume
+	})
+
 	done := make(chan error, 1)
 	go func() {
 		_, err := engine.Backup(ctx, "test", testPlan(source, 1))
 		done <- err
 	}()
 
-	deadline := time.NewTimer(10 * time.Second)
-	poll := time.NewTicker(time.Millisecond)
-	defer deadline.Stop()
-	defer poll.Stop()
-	for countBlockObjects(t, repo.Root()) == 0 {
-		select {
-		case err := <-done:
-			t.Fatalf("Backup() returned %v before storing a block", err)
-		case <-poll.C:
-		case <-deadline.C:
-			t.Fatal("Backup() did not publish a block within 10 seconds")
-		}
-	}
 	select {
+	case <-firstBlock:
 	case err := <-done:
-		t.Fatalf("Backup() returned %v before cancellation", err)
-	default:
+		t.Fatalf("Backup() returned %v before storing a block", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("Backup() did not publish a block within 10 seconds")
 	}
 	cancel()
+	close(resume)
 
 	err := <-done
 	if !errors.Is(err, context.Canceled) {
