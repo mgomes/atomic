@@ -18,7 +18,7 @@ import (
 func (r *Repository) Collect(ctx context.Context) (removed int, err error) {
 	modifiedDirs := make(map[string]bool)
 	defer func() {
-		err = errors.Join(err, syncModifiedDirs(modifiedDirs))
+		err = errors.Join(err, syncModifiedDirs(ctx, modifiedDirs))
 	}()
 
 	reachable, err := r.reachableBlocks(ctx)
@@ -172,7 +172,10 @@ func removeRepositoryFile(path string, modifiedDirs map[string]bool) (bool, erro
 	return true, nil
 }
 
-func syncModifiedDirs(modifiedDirs map[string]bool) error {
+func syncModifiedDirs(ctx context.Context, modifiedDirs map[string]bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	directories := make([]string, 0, len(modifiedDirs))
 	for directory := range modifiedDirs {
 		directories = append(directories, directory)
@@ -180,6 +183,9 @@ func syncModifiedDirs(modifiedDirs map[string]bool) error {
 	sort.Strings(directories)
 	var syncErr error
 	for _, directory := range directories {
+		if err := ctx.Err(); err != nil {
+			return errors.Join(syncErr, err)
+		}
 		if err := syncDir(directory); err != nil {
 			syncErr = errors.Join(
 				syncErr,
