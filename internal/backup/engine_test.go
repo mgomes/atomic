@@ -1,7 +1,6 @@
 package backup_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -171,7 +170,11 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 
 	root := t.TempDir()
 	source := filepath.Join(root, "source")
-	if err := os.WriteFile(source, bytes.Repeat([]byte("x"), 3*chunk.DefaultSize), 0o600); err != nil {
+	payload := make([]byte, 8*chunk.DefaultSize)
+	for i := range 8 {
+		payload[i*chunk.DefaultSize] = byte(i + 1)
+	}
+	if err := os.WriteFile(source, payload, 0o600); err != nil {
 		t.Fatalf("WriteFile(source) returned error: %v", err)
 	}
 	repo, engine := newTestEngine(t, filepath.Join(root, "repository"))
@@ -184,7 +187,7 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 		done <- err
 	}()
 
-	deadline := time.NewTimer(5 * time.Second)
+	deadline := time.NewTimer(10 * time.Second)
 	poll := time.NewTicker(time.Millisecond)
 	defer deadline.Stop()
 	defer poll.Stop()
@@ -194,8 +197,13 @@ func TestBackupCollectsNewBlocksAfterCanceledCapture(t *testing.T) {
 			t.Fatalf("Backup() returned %v before storing a block", err)
 		case <-poll.C:
 		case <-deadline.C:
-			t.Fatal("Backup() did not publish a block within 5 seconds")
+			t.Fatal("Backup() did not publish a block within 10 seconds")
 		}
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("Backup() returned %v before cancellation", err)
+	default:
 	}
 	cancel()
 
